@@ -261,9 +261,9 @@ function createWindow() {
 
   win = new BrowserWindow({
     width: 280,
-    height: 290,
+    height: 490,
     x: wa.x + Math.floor(sw / 2 - 140),
-    y: wa.y + sh - 290,
+    y: wa.y + sh - 490,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
@@ -527,7 +527,7 @@ function sendEmotion(emotion, text) {
 function resetPosition() {
   const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize
   const wa = screen.getPrimaryDisplay().workArea
-  win.setPosition(wa.x + Math.floor(sw / 2 - 140), wa.y + sh - 290)
+  win.setPosition(wa.x + Math.floor(sw / 2 - 140), wa.y + sh - 490)
 }
 
 // ── Panel Window (History / Detail View) ──────────────────────────────────────
