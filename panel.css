@@ -1,0 +1,393 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #0f1117;
+  --bg2: #161922;
+  --bg3: #1c1f2e;
+  --border: #2a2d3e;
+  --text: #e4e4e7;
+  --text2: #9ca3af;
+  --text3: #6b7280;
+  --cyan: #22d3ee;
+  --cyan-dim: #22d3ee30;
+  --green: #3fb950;
+  --green-dim: #3fb95030;
+  --red: #ff7b72;
+  --red-dim: #ff7b7230;
+  --yellow: #fbbf24;
+  --yellow-dim: #fbbf2430;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Titlebar ───────────────────────────────────────────────────────────────── */
+
+#titlebar {
+  height: 42px;
+  min-height: 42px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding-left: 78px;
+  -webkit-app-region: drag;
+}
+
+.titlebar-drag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.title-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 6px var(--cyan-dim);
+}
+
+.title-text {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.title-sep { color: var(--text3); }
+.title-sub { color: var(--text2); font-size: 12px; }
+
+/* ── Content ────────────────────────────────────────────────────────────────── */
+
+#content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+#content::-webkit-scrollbar { width: 6px; }
+#content::-webkit-scrollbar-track { background: transparent; }
+#content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.section { margin-bottom: 16px; }
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding: 0 2px;
+}
+
+.section-header h2 {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text2);
+}
+
+.badge {
+  background: var(--bg3);
+  color: var(--text2);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+
+.empty-state {
+  color: var(--text3);
+  font-size: 12px;
+  padding: 20px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+/* ── Approval Cards ─────────────────────────────────────────────────────────── */
+
+.approval-card {
+  background: var(--bg2);
+  border: 1px solid var(--yellow-dim);
+  border-left: 3px solid var(--yellow);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.approval-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.approval-tool {
+  font-weight: 600;
+  color: var(--yellow);
+  font-size: 12px;
+}
+
+.approval-session {
+  font-size: 10px;
+  color: var(--text3);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.approval-command {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--text);
+  margin-bottom: 8px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.approval-cwd {
+  font-size: 10px;
+  color: var(--text3);
+  margin-bottom: 8px;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* ── Session Cards ──────────────────────────────────────────────────────────── */
+
+.session-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.session-card:hover { border-color: var(--cyan-dim); }
+.session-card.selected { border-color: var(--cyan); }
+
+.session-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.session-id {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.session-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.session-dot.active { background: var(--green); box-shadow: 0 0 6px var(--green-dim); }
+.session-dot.working { background: var(--cyan); box-shadow: 0 0 6px var(--cyan-dim); animation: pulse 1.5s ease-in-out infinite; }
+.session-dot.idle { background: var(--text3); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.session-name {
+  font-weight: 500;
+  font-size: 12px;
+  font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.session-time {
+  font-size: 10px;
+  color: var(--text3);
+}
+
+.session-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding-left: 12px;
+}
+
+.session-cwd {
+  font-size: 10px;
+  color: var(--text3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-tools {
+  font-size: 10px;
+  color: var(--text2);
+}
+
+.session-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  padding-left: 12px;
+}
+
+.btn-xs {
+  padding: 2px 8px;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.btn-action {
+  background: var(--bg3);
+  color: var(--text2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-action:hover {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+
+/* ── Activity Log ───────────────────────────────────────────────────────────── */
+
+.activity-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+}
+
+.activity-entry:last-child { border-bottom: none; }
+
+.activity-time {
+  color: var(--text3);
+  font-size: 10px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  min-width: 50px;
+}
+
+.activity-icon {
+  font-size: 10px;
+  min-width: 14px;
+  text-align: center;
+}
+
+.activity-text { color: var(--text2); }
+.activity-text .tool-name { color: var(--cyan); font-weight: 500; }
+.activity-text .approved { color: var(--green); }
+.activity-text .denied { color: var(--red); }
+
+/* ── Chat Bar ───────────────────────────────────────────────────────────────── */
+
+#chat-bar {
+  min-height: 52px;
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+#session-select {
+  background: var(--bg3);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  min-width: 120px;
+  max-width: 140px;
+  outline: none;
+}
+
+#session-select:focus { border-color: var(--cyan); }
+
+.chat-input-wrap {
+  flex: 1;
+  display: flex;
+  gap: 4px;
+}
+
+#chat-input {
+  flex: 1;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  outline: none;
+}
+
+#chat-input:focus { border-color: var(--cyan); }
+#chat-input:disabled { opacity: 0.4; }
+
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+
+.btn {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-sm { padding: 4px 10px; font-size: 10px; }
+
+.btn-approve {
+  background: var(--green-dim);
+  color: var(--green);
+  border: 1px solid var(--green-dim);
+}
+.btn-approve:hover:not(:disabled) { background: var(--green); color: #000; }
+
+.btn-deny {
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid var(--red-dim);
+}
+.btn-deny:hover:not(:disabled) { background: var(--red); color: #000; }
+
+.btn-send {
+  background: var(--cyan-dim);
+  color: var(--cyan);
+  border: 1px solid var(--cyan-dim);
+  padding: 6px 10px;
+}
+.btn-send:hover:not(:disabled) { background: var(--cyan); color: #000; }

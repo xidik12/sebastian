@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Avatar Editor — Sebastian</title>
+  <link rel="stylesheet" href="avatar-editor.css">
+</head>
+<body>
+  <div class="titlebar" id="titlebar">
+    <span class="title">Customize Avatar</span>
+  </div>
+
+  <div class="content">
+    <!-- Left sidebar: avatar list -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <span>Avatars</span>
+        <button id="btn-new" title="Create new avatar">+</button>
+      </div>
+      <div id="avatar-list" class="avatar-list"></div>
+      <div class="sidebar-footer">
+        <button id="btn-reset" class="btn-secondary">Use Default Butler</button>
+      </div>
+    </div>
+
+    <!-- Center area -->
+    <div class="center">
+      <div id="editor-empty" class="editor-empty">
+        <p>Select an avatar or create a new one</p>
+      </div>
+
+      <div id="editor-main" class="editor-main" style="display:none">
+        <!-- Avatar name -->
+        <div class="editor-header">
+          <input id="avatar-name" class="avatar-name-input" placeholder="Avatar name..." spellcheck="false">
+          <span id="legacy-badge" class="legacy-badge" style="display:none">Legacy Mode</span>
+        </div>
+
+        <!-- Legacy grid (shown for v1 avatars) -->
+        <div id="legacy-editor" style="display:none">
+          <div class="states-grid" id="states-grid"></div>
+          <div class="editor-hint">
+            Drag &amp; drop images into each slot. Only <strong>idle</strong> is required.
+          </div>
+          <button id="btn-convert" class="btn-convert">Convert to Parts Mode</button>
+        </div>
+
+        <!-- Personality section -->
+        <div id="personality-section" class="personality-section">
+          <div class="section-label">Personality</div>
+          <div class="personality-row">
+            <label class="field-label">Butler Name</label>
+            <input id="butler-name" class="field-input" placeholder="Sebastian" spellcheck="false">
+          </div>
+          <div class="personality-row">
+            <label class="field-label">Voice</label>
+            <select id="voice-select" class="field-select">
+              <option value="">Auto-select</option>
+            </select>
+          </div>
+          <div class="personality-sliders">
+            <div class="slider-row">
+              <label class="slider-label">Rate</label>
+              <input type="range" id="voice-rate" class="slider" min="0.5" max="2.0" step="0.05" value="1.0">
+              <span id="voice-rate-val" class="slider-val">1.00</span>
+            </div>
+            <div class="slider-row">
+              <label class="slider-label">Pitch</label>
+              <input type="range" id="voice-pitch" class="slider" min="0.2" max="2.0" step="0.05" value="0.85">
+              <span id="voice-pitch-val" class="slider-val">0.85</span>
+            </div>
+            <div class="slider-row">
+              <label class="slider-label">Volume</label>
+              <input type="range" id="voice-volume" class="slider" min="0" max="1.0" step="0.05" value="0.7">
+              <span id="voice-volume-val" class="slider-val">0.70</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Preview area -->
+        <div id="parts-editor" class="parts-editor">
+          <div class="preview-wrapper">
+            <div id="preview-area" class="preview-area">
+              <!-- Layered part images rendered here -->
+            </div>
+          </div>
+          <div class="preview-controls">
+            <select id="emotion-select" class="field-select emotion-select"></select>
+            <label class="checkbox-label">
+              <input type="checkbox" id="play-animations" checked>
+              <span>Animate</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Footer actions -->
+        <div class="editor-actions">
+          <button id="btn-delete" class="btn-danger">Delete Avatar</button>
+          <button id="btn-apply" class="btn-primary">Apply Avatar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right panel: part inspector -->
+    <div id="inspector" class="inspector" style="display:none">
+      <div class="inspector-header">
+        <span id="inspector-title" class="inspector-title">Part</span>
+      </div>
+
+      <div class="inspector-thumb-wrap">
+        <div id="inspector-thumb" class="inspector-thumb">
+          <span class="inspector-no-image">No image</span>
+        </div>
+      </div>
+
+      <div class="inspector-actions">
+        <button id="inspector-choose" class="btn-inspector">Choose Image</button>
+        <div id="inspector-dropzone" class="inspector-dropzone">
+          <span>or drop here</span>
+        </div>
+        <button id="inspector-remove" class="btn-inspector-remove">Remove</button>
+      </div>
+
+      <div class="inspector-sliders">
+        <div class="slider-row">
+          <label class="slider-label">Offset X</label>
+          <input type="range" id="part-offset-x" class="slider" min="-50" max="50" step="1" value="0">
+          <span id="part-offset-x-val" class="slider-val">0</span>
+        </div>
+        <div class="slider-row">
+          <label class="slider-label">Offset Y</label>
+          <input type="range" id="part-offset-y" class="slider" min="-50" max="50" step="1" value="0">
+          <span id="part-offset-y-val" class="slider-val">0</span>
+        </div>
+        <div class="slider-row">
+          <label class="slider-label">Scale</label>
+          <input type="range" id="part-scale" class="slider" min="0.2" max="3.0" step="0.05" value="1.0">
+          <span id="part-scale-val" class="slider-val">1.00</span>
+        </div>
+      </div>
+
+      <div id="variants-section" class="variants-section" style="display:none">
+        <div class="section-label">Variants</div>
+        <div id="variants-list" class="variants-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom bar: part category tabs + part slots -->
+  <div id="part-bar" class="part-bar" style="display:none">
+    <div id="category-tabs" class="category-tabs"></div>
+    <div id="part-slots" class="part-slots"></div>
+  </div>
+
+  <script src="avatar-parts.js"></script>
+  <script src="avatar-editor.js"></script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Sebastian — Session Manager</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <div id="titlebar">
+    <div class="titlebar-drag">
+      <span class="title-dot"></span>
+      <span class="title-text">Sebastian</span>
+      <span class="title-sep">·</span>
+      <span class="title-sub">Session Manager</span>
+    </div>
+  </div>
+
+  <div id="content">
+    <!-- Approvals Section -->
+    <div id="approvals-section" class="section" style="display:none">
+      <div class="section-header">
+        <h2>Pending Approvals</h2>
+        <button id="approve-all-btn" class="btn btn-sm btn-approve">Approve All</button>
+      </div>
+      <div id="approvals-list"></div>
+    </div>
+
+    <!-- Sessions Section -->
+    <div id="sessions-section" class="section">
+      <div class="section-header">
+        <h2>Active Sessions</h2>
+        <span id="session-count" class="badge">0</span>
+      </div>
+      <div id="sessions-list">
+        <div class="empty-state">No active sessions. Start a Claude Code session to see it here.</div>
+      </div>
+    </div>
+
+    <!-- Activity Log -->
+    <div id="activity-section" class="section">
+      <div class="section-header">
+        <h2>Activity</h2>
+      </div>
+      <div id="activity-log"></div>
+    </div>
+  </div>
+
+  <!-- Chat Bar -->
+  <div id="chat-bar">
+    <select id="session-select">
+      <option value="">Select session...</option>
+    </select>
+    <div class="chat-input-wrap">
+      <input id="chat-input" type="text" placeholder="Send message to session..." disabled>
+      <button id="chat-send" class="btn btn-send" disabled>&#9654;</button>
+    </div>
+  </div>
+
+  <script src="panel.js"></script>
+</body>
+</html>

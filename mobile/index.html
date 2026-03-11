@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0f1117">
+  <meta name="apple-mobile-web-app-title" content="Sebastian">
+  <title>Sebastian</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body style="background-color:#0f1117">
+  <!-- Connection Setup Screen -->
+  <div id="connect-screen">
+    <div class="connect-body">
+      <div class="connect-icon">&#9881;</div>
+      <h2 class="connect-title">Sebastian</h2>
+      <p class="connect-subtitle">Connect to your desktop companion</p>
+      <input id="connect-url" type="url" placeholder="http://192.168.0.100:19700" spellcheck="false" autocomplete="off">
+      <button id="connect-btn">Connect</button>
+      <div id="connect-status" class="connect-status"></div>
+      <div id="connect-saved" class="connect-saved" style="display:none">
+        <span class="connect-saved-label">Recent:</span>
+        <div id="connect-history"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main App (hidden until connected) -->
+  <div id="app-main" style="display:none">
+
+  <!-- Speech bubble (approvals + responses) -->
+  <div id="bubble" style="display:none">
+    <div class="bubble-body">
+      <div class="bubble-label" id="bubble-label">Approval needed</div>
+      <div class="bubble-tool" id="bubble-tool">Bash</div>
+      <div class="bubble-cmd" id="bubble-cmd">command here</div>
+      <div class="bubble-meta" id="bubble-meta"></div>
+      <div class="bubble-question" id="bubble-question">Do you want to proceed?</div>
+      <div class="bubble-actions" id="bubble-actions">
+        <button class="bubble-btn approve" id="bubble-approve">Yes</button>
+        <button class="bubble-btn approve-all" id="bubble-approve-all-btn">Yes, and...</button>
+        <button class="bubble-btn deny" id="bubble-deny">No</button>
+      </div>
+      <div class="bubble-count" id="bubble-count" style="display:none">+0 more</div>
+      <div class="bubble-dismiss" id="bubble-dismiss" style="display:none">tap to dismiss</div>
+    </div>
+    <div class="bubble-arrow"></div>
+  </div>
+
+  <!-- Custom avatar (hidden by default, shown when avatar is applied) -->
+  <div id="custom-avatar" style="display:none">
+    <img id="custom-avatar-img" src="" width="200" height="200" draggable="false">
+  </div>
+
+  <svg id="scene" viewBox="0 0 200 200" width="200" height="200">
+    <defs>
+      <radialGradient id="glow-grad">
+        <stop id="glow-stop-0" offset="0%" stop-color="#22d3ee" stop-opacity="0.25"/>
+        <stop id="glow-stop-1" offset="55%" stop-color="#22d3ee" stop-opacity="0.04"/>
+        <stop id="glow-stop-2" offset="100%" stop-color="#22d3ee" stop-opacity="0"/>
+      </radialGradient>
+      <radialGradient id="skin-grad" cx="45%" cy="40%">
+        <stop offset="0%" stop-color="#f5dcc0"/>
+        <stop offset="100%" stop-color="#e8c8a0"/>
+      </radialGradient>
+      <radialGradient id="sclera-grad" cx="40%" cy="35%">
+        <stop offset="0%" stop-color="#ffffff"/>
+        <stop offset="100%" stop-color="#e8ecf0"/>
+      </radialGradient>
+      <radialGradient id="iris-grad" cx="45%" cy="38%">
+        <stop offset="0%" stop-color="#2a4060"/>
+        <stop offset="70%" stop-color="#14202e"/>
+        <stop offset="100%" stop-color="#0a1018"/>
+      </radialGradient>
+    </defs>
+
+    <!-- Ambient particles -->
+    <g id="particles">
+      <circle cx="25" cy="140" r="1" fill="#22d3ee" class="particle" style="animation-delay:0s;animation-duration:4.2s"/>
+      <circle cx="175" cy="130" r="1" fill="#22d3ee" class="particle" style="animation-delay:1.4s;animation-duration:3.5s"/>
+      <circle cx="45" cy="25" r="0.8" fill="#22d3ee" class="particle" style="animation-delay:0.7s;animation-duration:4.8s"/>
+      <circle cx="155" cy="30" r="0.8" fill="#22d3ee" class="particle" style="animation-delay:2.2s;animation-duration:3.8s"/>
+      <circle cx="100" cy="195" r="1" fill="#22d3ee" class="particle" style="animation-delay:1.8s;animation-duration:4s"/>
+    </g>
+
+    <!-- Main character group -->
+    <g id="character">
+      <!-- Glow aura -->
+      <ellipse id="glow" cx="100" cy="100" rx="60" ry="85" fill="url(#glow-grad)" class="glow-pulse"/>
+
+      <!-- Ground shadow -->
+      <ellipse id="shadow" cx="100" cy="190" rx="26" ry="4" fill="#000" opacity="0.15" class="shadow-pulse"/>
+
+      <!-- Body group (floats/bounces) -->
+      <g id="body-group" class="float">
+        <g id="breathe-group" class="breathe">
+
+          <!-- COAT TAILS -->
+          <polygon points="67,148 62,172 80,152" fill="#1a1a2e"/>
+          <polygon points="133,148 138,172 120,152" fill="#1a1a2e"/>
+
+          <!-- LEGS -->
+          <g id="left-foot">
+            <rect x="80" y="148" width="15" height="28" rx="4" fill="#1a1a2e"/>
+            <ellipse cx="87" cy="178" rx="11" ry="5" fill="#0d0d15"/>
+          </g>
+          <g id="right-foot">
+            <rect x="105" y="148" width="15" height="28" rx="4" fill="#1a1a2e"/>
+            <ellipse cx="113" cy="178" rx="11" ry="5" fill="#0d0d15"/>
+          </g>
+
+          <!-- LEFT ARM -->
+          <g id="left-arm" transform="rotate(10,58,92)">
+            <rect x="50" y="90" width="13" height="36" rx="6" fill="#1a1a2e"/>
+            <ellipse cx="56" cy="128" rx="6" ry="4.5" fill="#f5f5f5"/>
+          </g>
+
+          <!-- SUIT BODY -->
+          <rect x="64" y="82" width="72" height="68" rx="5" fill="#1a1a2e"/>
+          <rect x="89" y="87" width="22" height="56" rx="1" fill="#f0f0f0"/>
+          <polygon points="89,87 80,87 89,112" fill="#252540"/>
+          <polygon points="111,87 120,87 111,112" fill="#252540"/>
+          <circle cx="100" cy="108" r="1.5" fill="#b8b8b8"/>
+          <circle cx="100" cy="120" r="1.5" fill="#b8b8b8"/>
+          <circle cx="100" cy="132" r="1.5" fill="#b8b8b8"/>
+
+          <!-- Bow tie -->
+          <polygon points="91,85 96,89 91,93" fill="#22d3ee"/>
+          <polygon points="109,85 104,89 109,93" fill="#22d3ee"/>
+          <circle cx="100" cy="89" r="2.5" fill="#0e7490"/>
+
+          <!-- Core glow -->
+          <circle id="core" cx="100" cy="116" r="5" fill="#22d3ee" opacity="0.06" class="core-pulse"/>
+
+          <!-- RIGHT ARM -->
+          <g id="right-arm" style="transform-origin:141px 92px">
+            <rect x="136" y="90" width="13" height="36" rx="6" fill="#1a1a2e"/>
+            <ellipse id="right-glove" cx="143" cy="128" rx="6" ry="4.5" fill="#f5f5f5"/>
+          </g>
+
+          <!-- NECK -->
+          <rect x="92" y="73" width="16" height="13" rx="3" fill="url(#skin-grad)"/>
+
+          <!-- HEAD -->
+          <circle cx="100" cy="44" r="30" fill="#1a1a2e"/>
+          <ellipse cx="70" cy="50" rx="4" ry="6" fill="#ddb890"/>
+          <ellipse cx="130" cy="50" rx="4" ry="6" fill="#ddb890"/>
+          <ellipse cx="100" cy="50" rx="25" ry="25" fill="url(#skin-grad)"/>
+          <path d="M 76,36 Q 86,18 106,17 Q 118,18 126,28 L 123,33 Q 116,22 104,21 Q 88,22 80,33 Z" fill="#1a1a2e"/>
+          <path d="M 76,36 C 74,30 76,24 80,20 L 76,24 C 73,30 74,36 76,40 Z" fill="#1a1a2e"/>
+          <ellipse cx="94" cy="40" rx="14" ry="8" fill="white" opacity="0.04"/>
+
+          <!-- EYEBROWS -->
+          <g id="normal-brows">
+            <line x1="79" y1="38" x2="94" y2="36" stroke="#1a1a2e" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/>
+            <line x1="106" y1="36" x2="121" y2="38" stroke="#1a1a2e" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/>
+          </g>
+
+          <!-- LEFT EYE -->
+          <g id="left-eye" style="transform-origin:88px 48px">
+            <ellipse cx="88" cy="48" rx="9" ry="11" fill="url(#sclera-grad)"/>
+            <g id="left-iris-group">
+              <circle id="left-iris" cx="88" cy="50" r="7" fill="url(#iris-grad)"/>
+              <circle id="left-pupil" cx="88" cy="50" r="3" fill="#020305"/>
+              <circle cx="88" cy="50" r="6.5" fill="none" stroke="#22d3ee" stroke-width="0.4" opacity="0.1"/>
+            </g>
+            <circle id="left-reflect1" cx="85" cy="45" r="2" fill="white" opacity="0.85"/>
+            <circle cx="90" cy="52" r="1" fill="white" opacity="0.3"/>
+            <path id="left-crescent" d="M 79,48 Q 88,38 97,48" fill="#e8c8a0" style="display:none"/>
+          </g>
+          <g id="left-eye-closed" style="display:none">
+            <line x1="80" y1="48" x2="96" y2="48" stroke="#c8a880" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="82" y1="46" x2="83" y2="43" stroke="#c8a880" stroke-width="1" stroke-linecap="round" opacity="0.5"/>
+            <line x1="88" y1="45" x2="89" y2="42" stroke="#c8a880" stroke-width="1" stroke-linecap="round" opacity="0.5"/>
+          </g>
+
+          <!-- RIGHT EYE -->
+          <g id="right-eye" style="transform-origin:112px 48px">
+            <ellipse cx="112" cy="48" rx="9" ry="11" fill="url(#sclera-grad)"/>
+            <g id="right-iris-group">
+              <circle id="right-iris" cx="112" cy="50" r="7" fill="url(#iris-grad)"/>
+              <circle id="right-pupil" cx="112" cy="50" r="3" fill="#020305"/>
+              <circle cx="112" cy="50" r="6.5" fill="none" stroke="#22d3ee" stroke-width="0.4" opacity="0.1"/>
+            </g>
+            <circle id="right-reflect1" cx="109" cy="45" r="2" fill="white" opacity="0.85"/>
+            <circle cx="114" cy="52" r="1" fill="white" opacity="0.3"/>
+            <path id="right-crescent" d="M 103,48 Q 112,38 121,48" fill="#e8c8a0" style="display:none"/>
+          </g>
+          <g id="right-eye-closed" style="display:none">
+            <line x1="104" y1="48" x2="120" y2="48" stroke="#c8a880" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="112" y1="45" x2="113" y2="42" stroke="#c8a880" stroke-width="1" stroke-linecap="round" opacity="0.5"/>
+            <line x1="118" y1="46" x2="117" y2="43" stroke="#c8a880" stroke-width="1" stroke-linecap="round" opacity="0.5"/>
+          </g>
+
+          <!-- Blush -->
+          <circle id="left-blush" cx="76" cy="56" r="5" fill="#f472b6" opacity="0.04"/>
+          <circle id="right-blush" cx="124" cy="56" r="5" fill="#f472b6" opacity="0.04"/>
+
+          <!-- Mouth -->
+          <path id="mouth" d="M 92,66 Q 100,72 108,66" fill="none" stroke="#b08060" stroke-width="1.8" stroke-linecap="round"/>
+          <ellipse id="mouth-open" cx="100" cy="68" rx="7" ry="4" fill="#8b4513" opacity="0" style="display:none"/>
+
+          <!-- Error eyebrows -->
+          <g id="error-brows" style="display:none">
+            <line x1="80" y1="35" x2="94" y2="38" stroke="#ff7b72" stroke-width="2.2" stroke-linecap="round" opacity="0.8"/>
+            <line x1="106" y1="38" x2="120" y2="35" stroke="#ff7b72" stroke-width="2.2" stroke-linecap="round" opacity="0.8"/>
+          </g>
+
+          <!-- Thinking eyebrows -->
+          <g id="think-brows" style="display:none">
+            <path d="M 80,36 Q 88,30 96,36" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+            <path d="M 104,36 Q 112,30 120,36" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+          </g>
+
+          <!-- Sad eyebrows (droopy) -->
+          <g id="sad-brows" style="display:none">
+            <line x1="80" y1="36" x2="94" y2="39" stroke="#6b9cc8" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/>
+            <line x1="106" y1="39" x2="120" y2="36" stroke="#6b9cc8" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/>
+          </g>
+
+          <!-- Surprised eyebrows (high arched) -->
+          <g id="surprised-brows" style="display:none">
+            <path d="M 79,32 Q 87,26 95,33" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+            <path d="M 105,33 Q 113,26 121,32" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+          </g>
+
+          <!-- Confused eyebrows (one raised, one normal) -->
+          <g id="confused-brows" style="display:none">
+            <line x1="79" y1="38" x2="94" y2="36" stroke="#a78bfa" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/>
+            <path d="M 105,33 Q 113,28 121,34" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+          </g>
+
+        </g>
+      </g>
+
+      <!-- Notification badge -->
+      <g id="notif-badge" style="display:none">
+        <circle cx="168" cy="18" r="10" fill="#ff7b72"/>
+        <text id="notif-count" x="168" y="22" text-anchor="middle" fill="white" font-size="11" font-weight="bold" font-family="system-ui, sans-serif">0</text>
+      </g>
+
+      <!-- Thinking dots -->
+      <g id="thinking-dots" style="display:none">
+        <circle cx="148" cy="22" r="2.5" fill="#22d3ee" class="dot dot-0"/>
+        <circle cx="158" cy="22" r="2.5" fill="#22d3ee" class="dot dot-1"/>
+        <circle cx="168" cy="22" r="2.5" fill="#22d3ee" class="dot dot-2"/>
+      </g>
+
+      <!-- Sleeping Z's -->
+      <g id="sleeping-zzz" style="display:none">
+        <text x="140" y="28" fill="#22d3ee" font-size="8" font-weight="bold" font-family="monospace" class="zzz zzz-0">z</text>
+        <text x="148" y="16" fill="#22d3ee" font-size="11" font-weight="bold" font-family="monospace" class="zzz zzz-1">z</text>
+        <text x="156" y="4" fill="#22d3ee" font-size="14" font-weight="bold" font-family="monospace" class="zzz zzz-2">z</text>
+      </g>
+
+      <!-- Sparkles -->
+      <g id="sparkles" style="display:none">
+        <g class="sparkle sparkle-0" style="transform-origin:30px 35px"><line x1="26" y1="35" x2="34" y2="35" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round"/><line x1="30" y1="31" x2="30" y2="39" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round"/></g>
+        <g class="sparkle sparkle-1" style="transform-origin:170px 38px"><line x1="166" y1="38" x2="174" y2="38" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round"/><line x1="170" y1="34" x2="170" y2="42" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round"/></g>
+        <g class="sparkle sparkle-2" style="transform-origin:38px 155px"><line x1="34" y1="155" x2="42" y2="155" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round"/><line x1="38" y1="151" x2="38" y2="159" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round"/></g>
+        <g class="sparkle sparkle-3" style="transform-origin:162px 150px"><line x1="158" y1="150" x2="166" y2="150" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round"/><line x1="162" y1="146" x2="162" y2="154" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round"/></g>
+        <g class="sparkle sparkle-4" style="transform-origin:100px 8px"><line x1="96" y1="8" x2="104" y2="8" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round"/><line x1="100" y1="4" x2="100" y2="12" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round"/></g>
+      </g>
+    </g>
+  </svg>
+
+  <div id="status">
+    <span id="status-dot"></span>
+    <span id="status-name">Sebastian</span>
+    <span id="status-sep">&middot;</span>
+    <span id="status-mood">At your service</span>
+  </div>
+
+  <!-- Settings Popover -->
+  <div id="settings-popover" style="display:none">
+    <div class="settings-body">
+      <div class="settings-row">
+        <span class="settings-label">Sound Notifications</span>
+        <label class="toggle"><input type="checkbox" id="setting-sound" checked><span class="toggle-slider"></span></label>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">Voice</span>
+        <label class="toggle"><input type="checkbox" id="setting-voice"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">Wake Word</span>
+        <label class="toggle"><input type="checkbox" id="setting-wake"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="settings-divider"></div>
+      <div class="settings-row">
+        <span class="settings-label connect-info" id="settings-server-url"></span>
+      </div>
+      <button class="settings-disconnect-btn" id="settings-disconnect">Disconnect</button>
+    </div>
+    <div class="settings-arrow"></div>
+  </div>
+
+  <!-- Chat input bar -->
+  <div id="chat-bar">
+    <div id="chat-row-top">
+      <button id="settings-btn" title="Settings">&#9881;</button>
+      <select id="session-select" title="Target session">
+        <option value="">No session</option>
+      </select>
+    </div>
+    <div id="chat-row-bottom">
+      <input id="chat-input" type="text" placeholder="Talk to Claude..." spellcheck="false">
+      <button id="chat-mic" title="Hold to speak">&#9899;</button>
+      <button id="chat-send">&#9654;</button>
+    </div>
+  </div>
+
+  </div><!-- end #app-main -->
+
+  <script src="app.js"></script>
+  <script>
+    // Service worker registration
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(function(err) {
+        console.warn('SW registration failed:', err);
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+{
+  "name": "sebastian",
+  "version": "1.2.0",
+  "description": "Sebastian — AI desktop butler companion for Claude Code",
+  "author": "Salakhitdinov Khidayotullo",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xidik12/sebastian.git"
+  },
+  "keywords": [
+    "electron",
+    "claude-code",
+    "desktop-companion",
+    "ai-butler",
+    "macos"
+  ],
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac",
+    "dist": "electron-builder --mac --publish never"
+  },
+  "build": {
+    "appId": "com.sebastian.desktop",
+    "productName": "Sebastian",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": "dir",
+      "icon": "icon.icns",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Sebastian needs microphone access for voice commands and wake word detection.",
+        "NSSpeechRecognitionUsageDescription": "Sebastian uses speech recognition for voice input and wake word detection."
+      }
+    },
+    "files": [
+      "main.js",
+      "app.js",
+      "preload.js",
+      "index.html",
+      "style.css",
+      "avatar-parts.js",
+      "panel.js",
+      "panel.html",
+      "panel.css",
+      "panel-preload.js",
+      "avatar-editor.js",
+      "avatar-editor.html",
+      "avatar-editor.css",
+      "avatar-preload.js",
+      "mobile/**/*",
+      "speech-helper.swift",
+      "speech-file-helper.swift",
+      "wake-word.swift"
+    ],
+    "asarUnpack": [
+      "speech-helper.swift",
+      "speech-file-helper.swift",
+      "wake-word.swift"
+    ],
+    "directories": {
+      "output": "dist"
+    }
+  },
+  "devDependencies": {
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8"
+  }
+}
