@@ -59,12 +59,6 @@ Tests pass: *"Excellent news, sir!"* — his eyes light up and he looks proud.
 - Multi-project awareness: notes when you're juggling 3+ projects
 - Auto-approve milestones: acknowledges trust at 10, 50, and every 100 auto-approvals
 
-### Mobile Remote Control
-- **Built-in PWA** — access from your phone at `http://<your-ip>:19700/mobile/`
-- **Real-time sync** via Server-Sent Events — see sessions, approvals, and emotions live
-- **Approve/deny from your phone** — walk away from your desk, still manage approvals
-- **Voice input** — speak to Sebastian from your phone
-
 ### Customization
 - **Avatar editor** — built-in editor to customize Sebastian's appearance with swappable SVG parts
 - **Custom avatars** — create entirely new characters with the parts-based system
@@ -169,14 +163,12 @@ Sebastian (Electron)
 ├── avatar-parts.js  — Avatar customization system
 ├── panel.*          — Session history panel
 ├── avatar-editor.*  — Visual avatar editor
-├── mobile/          — PWA for remote control
 └── *.swift          — Native macOS speech helpers
 ```
 
 **HTTP API** on port 19700:
 - `POST /hooks/*` — Claude Code hook endpoints
 - `POST /emotion` — Set emotion externally
-- `GET /mobile/events` — SSE stream for real-time updates
 - `GET /status` — Health check
 
 ---
