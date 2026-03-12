@@ -18,6 +18,95 @@ const EXTERNAL_HOLD = 5000
 const SLEEP_AFTER = 120000
 const SPEAK_MOUTH_SPEED = 140
 
+// ── Personality Response Pools (renderer-side) ──────────────────────────────
+
+function pickRendererLine(pool) {
+  if (!pool || pool.length === 0) return ''
+  return pool[Math.floor(Math.random() * pool.length)]
+}
+
+const RENDERER_LINES = {
+  approve: [
+    'Yes, sir. Proceeding.',
+    'Very good, sir.',
+    'Right away, sir.',
+    'As you wish, sir. Approved.',
+    'Proceeding at once, sir.',
+    'Understood, sir.',
+    'Consider it done, sir.',
+    'Granted, sir.',
+  ],
+  deny: [
+    'As you wish, sir. Denied.',
+    'Understood. Request denied, sir.',
+    'Very well, sir. That won\'t proceed.',
+    'Noted, sir. Standing down.',
+    'Denied, sir. Moving on.',
+  ],
+  approveAll: [
+    'Very well, sir. All approved.',
+    'Blanket approval granted, sir.',
+    'All requests approved, sir.',
+    'Everything approved. Carrying on, sir.',
+    'Sweeping approval, sir. As you wish.',
+  ],
+  chatSent: [
+    'Delivering your message, sir.',
+    'Message dispatched, sir.',
+    'Sent along, sir.',
+    'Your words have been relayed, sir.',
+    'Message delivered, sir.',
+    'Right away, sir. Message sent.',
+    'Passed along your instructions, sir.',
+  ],
+  compact: [
+    'Compacting context, sir.',
+    'Tidying up the context, sir.',
+    'Trimming the conversation, sir.',
+    'A bit of spring cleaning, sir.',
+    'Context compression underway, sir.',
+  ],
+  wakeWord: [
+    'Yes, sir?',
+    'At your service, sir.',
+    'How may I assist, sir?',
+    'You called, sir?',
+    'Right here, sir.',
+    'At your command, sir.',
+  ],
+  noSession: [
+    'No session selected, sir.',
+    'Please select a session first, sir.',
+    'I need a session to work with, sir.',
+  ],
+  autoAccept: [
+    'Toggling auto-accept, sir.',
+    'Auto-accept toggled, sir.',
+    'As you wish, sir. Auto-accept updated.',
+  ],
+  errorOccurred: [
+    'An error occurred, sir. Please check the details.',
+    'Something went wrong, sir. Have a look.',
+    'Oh dear. An error, sir.',
+    'There seems to be an issue, sir.',
+    'Trouble, sir. Worth investigating.',
+  ],
+  micDenied: [
+    'Microphone access denied, sir.',
+    'I\'m afraid the microphone is unavailable, sir.',
+  ],
+  noAudio: [
+    'I did not hear anything, sir.',
+    'Nothing came through, sir.',
+    'Silence, sir. Try again perhaps?',
+  ],
+  noUnderstand: [
+    'I could not understand, sir.',
+    'That was unclear, sir. Shall we try again?',
+    'I didn\'t quite catch that, sir.',
+  ],
+}
+
 const MOUTH = {
   idle:      'M 92,66 Q 100,72 108,66',
   happy:     'M 88,65 Q 100,76 112,65',
@@ -312,6 +401,7 @@ const S = {
   externalTimer: 0,
   lastInteraction: Date.now(),
   isSleeping: false,
+  isSpeaking: false,
   windowX: 0,
   windowY: 0,
   screenW: 0,
@@ -512,8 +602,7 @@ async function init() {
       playCompletionSound()
     } else {
       playNotificationSound()
-      const name = data.sessionName || 'a session'
-      sebastianSay(`Sir, ${name} needs your approval.`)
+      sebastianSay(data.voiceLine || `Sir, ${data.sessionName || 'a session'} needs your approval.`)
     }
   })
 
@@ -525,21 +614,44 @@ async function init() {
     if (data.wakeWord !== undefined) { el.settingWake.checked = data.wakeWord }
   })
 
-  // Session response (from chat or completion) — show in bubble + speak it
+  // Session response (from chat or completion) — show in bubble + speak with emotion
   window.api.onSessionResponse((data) => {
     const text = (data.response || '').trim()
     if (!text) return
 
     if (data.isCompletion) {
-      // Task completion — show briefly in bubble
       showResponseBubble(text, data.sessionId)
-      return // voice event handles the speech separately
+      return
     }
 
     showResponseBubble(text, data.sessionId)
-    // Speak a short summary — don't read full errors
-    if (text.startsWith('Error:') || text.startsWith('error:') || text.includes('Error:')) {
-      sebastianSay('An error occurred, sir. Please check the details.')
+
+    // Detect sentiment from response and set appropriate emotion + voice
+    const lower = text.toLowerCase()
+    if (lower.includes('error') || lower.includes('failed') || lower.includes('not found') || lower.includes('exception')) {
+      setExternalEmotion('nervous', 'Error detected')
+      sebastianSay(pickRendererLine(RENDERER_LINES.errorOccurred))
+    } else if (lower.includes('success') || lower.includes('passed') || lower.includes('complete') || lower.includes('done')) {
+      setExternalEmotion('happy', 'Success')
+      sebastianSay(pickRendererLine([
+        'Excellent news, sir!', 'Wonderful, sir!', 'Splendid result, sir!',
+        'That went well, sir!', 'Brilliant, sir!',
+      ]))
+    } else if (lower.includes('warning') || lower.includes('deprecated') || lower.includes('caution')) {
+      setExternalEmotion('confused', 'Warning')
+      sebastianSay(pickRendererLine([
+        'A word of caution, sir.', 'Something to keep an eye on, sir.',
+        'A warning, sir. Worth noting.', 'Proceed carefully, sir.',
+      ]))
+    } else if (lower.includes('installed') || lower.includes('built') || lower.includes('compiled') || lower.includes('deployed')) {
+      setExternalEmotion('excited', 'Build complete')
+      sebastianSay(pickRendererLine([
+        'All set, sir!', 'Built and ready, sir!', 'Deployed, sir!',
+        'Everything is in place, sir!',
+      ]))
+    } else if (data.isPaste) {
+      // Message was pasted into terminal
+      sebastianSay(pickRendererLine(RENDERER_LINES.chatSent))
     } else {
       const spoken = text.length > 120 ? text.slice(0, 120) + '...' : text
       sebastianSay(spoken)
@@ -552,16 +664,38 @@ async function init() {
     sebastianSay(text)
   })
 
-  // Native TTS mouth animation sync
+  // Native TTS mouth animation sync — keep current emote, just animate mouth
   window.api.onSpeechStart(() => {
-    S.externalEmotion = 'speaking'
-    S.externalTimer = 999999
-    S.emotion = 'speaking'
+    S.isSpeaking = true
+    // Only override to 'speaking' if we're idle — otherwise keep the current emote
+    if (!S.externalEmotion || S.emotion === 'idle') {
+      S.externalEmotion = 'speaking'
+      S.externalTimer = 999999
+      S.emotion = 'speaking'
+    } else {
+      // Keep current emote, just extend its hold time so it doesn't expire during speech
+      S.externalTimer = 999999
+    }
   })
   window.api.onSpeechEnd(() => {
+    S.isSpeaking = false
     S.externalEmotion = null
     S.externalTimer = 0
     S.emotion = behaviorEmotion(S.behavior)
+  })
+
+  // Bubble side positioning — shift content so Sebastian stays in place
+  window.api.onBubbleSide((side) => {
+    el.bubble.classList.remove('bubble-left', 'bubble-right')
+    if (side === 'left') {
+      // Window expanded to left, Sebastian on right, bubble on left
+      el.bubble.classList.add('bubble-left')
+      document.body.style.alignItems = 'flex-end'
+    } else {
+      // Window expanded to right, Sebastian on left, bubble on right
+      el.bubble.classList.add('bubble-right')
+      document.body.style.alignItems = 'flex-start'
+    }
   })
 
   // Avatar system
@@ -583,11 +717,17 @@ async function init() {
     }
   })
 
+  // Proactive personality comments from main process
+  window.api.onPersonalityComment((data) => {
+    if (approvalQueue.length > 0) return
+    showResponseBubble(data.text)
+  })
+
   // Wake word
   window.api.onWakeWordDetected(() => {
     wake()
     setExternalEmotion('listening', 'Listening...')
-    sebastianSay('Yes, sir?')
+    sebastianSay(pickRendererLine(RENDERER_LINES.wakeWord))
   })
 
   window.api.onWakeWordPrompt((text) => {
@@ -781,11 +921,12 @@ function scheduleBlink() {
 let mouthInterval = null
 
 function updateMouth() {
-  if (S.emotion === 'speaking' && !mouthInterval) {
+  const shouldAnimate = S.emotion === 'speaking' || S.isSpeaking
+  if (shouldAnimate && !mouthInterval) {
     mouthInterval = setInterval(() => {
       S.mouthPhase = (S.mouthPhase + 1) % 3
     }, SPEAK_MOUTH_SPEED + Math.random() * 50)
-  } else if (S.emotion !== 'speaking' && mouthInterval) {
+  } else if (!shouldAnimate && mouthInterval) {
     clearInterval(mouthInterval)
     mouthInterval = null
     S.mouthPhase = 0
@@ -933,15 +1074,21 @@ function render() {
     el.leftBlush.setAttribute('opacity', blushOp)
     el.rightBlush.setAttribute('opacity', blushOp)
 
-    // Mouth
-    el.mouth.setAttribute('d', MOUTH[e] || MOUTH.idle)
-    el.mouth.setAttribute('stroke', '#b08060')
-    if (emoteConfig.mouthOpen) {
-      el.mouthOpen.style.display = ''
-      el.mouthOpen.setAttribute('opacity', '0.5')
+    // Mouth — animate if speaking over the emote
+    if (S.isSpeaking) {
+      el.mouth.setAttribute('d', MOUTH.speaking[S.mouthPhase])
+      el.mouthOpen.style.display = S.mouthPhase === 1 ? '' : 'none'
+      el.mouthOpen.setAttribute('opacity', S.mouthPhase === 1 ? '0.6' : '0')
     } else {
-      el.mouthOpen.style.display = 'none'
+      el.mouth.setAttribute('d', MOUTH[e] || MOUTH.idle)
+      if (emoteConfig.mouthOpen) {
+        el.mouthOpen.style.display = ''
+        el.mouthOpen.setAttribute('opacity', '0.5')
+      } else {
+        el.mouthOpen.style.display = 'none'
+      }
     }
+    el.mouth.setAttribute('stroke', '#b08060')
 
     // Extended effects (SVG overlays)
     ALL_FX.forEach(fx => { if (fx) fx.style.display = 'none' })
@@ -1057,8 +1204,8 @@ function render() {
   el.leftBlush.setAttribute('opacity', blushOp)
   el.rightBlush.setAttribute('opacity', blushOp)
 
-  // Mouth
-  if (e === 'speaking') {
+  // Mouth — animate speaking even when showing another emote
+  if (e === 'speaking' || S.isSpeaking) {
     el.mouth.setAttribute('d', MOUTH.speaking[S.mouthPhase])
     el.mouthOpen.style.display = S.mouthPhase === 1 ? '' : 'none'
     el.mouthOpen.setAttribute('opacity', S.mouthPhase === 1 ? '0.6' : '0')
@@ -1132,7 +1279,10 @@ function showCurrentApproval() {
   const current = approvalQueue[0]
   const approvalSession = activeSessions.find(s => s.id === current.sessionId)
   const approvalName = approvalSession ? sessionDisplayName(approvalSession) : current.sessionId?.slice(0, 8)
+  const sessionColor = approvalSession?.color || '#fbbf24'
   el.bubbleLabel.textContent = `${current.toolName} · ${approvalName}`
+  el.bubbleLabel.style.color = sessionColor
+  el.bubble.querySelector('.bubble-body').style.borderLeftColor = sessionColor
   el.bubbleTool.textContent = current.toolName === 'Bash' ? 'Bash command' : `${current.toolName} operation`
   el.bubbleCmd.textContent = formatToolInput(current.toolName, current.toolInput)
   el.bubbleCmd.style.maxHeight = '60px'
@@ -1149,6 +1299,7 @@ function showCurrentApproval() {
   }
 
   el.bubble.style.display = ''
+  window.api.bubbleResize(true)
 
   // Auto-select the session this approval is from
   if (!selectedSessionId) {
@@ -1159,6 +1310,12 @@ function showCurrentApproval() {
 
 function hideBubble() {
   el.bubble.style.display = 'none'
+  el.bubble.classList.remove('bubble-left', 'bubble-right')
+  document.body.style.alignItems = 'center'
+  window.api.bubbleResize(false)
+  // Reset session color styling
+  el.bubbleLabel.style.color = ''
+  el.bubble.querySelector('.bubble-body').style.borderLeftColor = ''
 }
 
 function formatToolInput(toolName, input) {
@@ -1179,7 +1336,10 @@ function showResponseBubble(text, sessionId) {
 
   const session = activeSessions.find(s => s.id === sessionId)
   const label = session ? sessionDisplayName(session) : 'session'
+  const sessionColor = session?.color || '#fbbf24'
   el.bubbleLabel.textContent = `Response from ${label}`
+  el.bubbleLabel.style.color = sessionColor
+  el.bubble.querySelector('.bubble-body').style.borderLeftColor = sessionColor
   el.bubbleTool.textContent = ''
   el.bubbleCmd.textContent = text.slice(0, 300) + (text.length > 300 ? '...' : '')
   el.bubbleCmd.style.maxHeight = '80px'
@@ -1189,6 +1349,7 @@ function showResponseBubble(text, sessionId) {
   el.bubbleCount.style.display = 'none'
   el.bubbleDismiss.style.display = ''
   el.bubble.style.display = ''
+  window.api.bubbleResize(true)
 
   // Auto-dismiss after 12 seconds
   responseDismissTimer = setTimeout(() => {
@@ -1202,7 +1363,7 @@ function setupBubbleActions() {
     if (approvalQueue.length === 0) return
     const current = approvalQueue.shift()
     window.api.approveRequest(current.id)
-    sebastianSay('Yes, sir. Proceeding.')
+    sebastianSay(pickRendererLine(RENDERER_LINES.approve))
     showCurrentApproval()
   })
 
@@ -1211,7 +1372,7 @@ function setupBubbleActions() {
     if (approvalQueue.length === 0) return
     const current = approvalQueue.shift()
     window.api.denyRequest(current.id, 'Denied by user')
-    sebastianSay('As you wish, sir. Denied.')
+    sebastianSay(pickRendererLine(RENDERER_LINES.deny))
     showCurrentApproval()
   })
 
@@ -1232,7 +1393,7 @@ function setupBubbleActions() {
     window.api.approveAll()
     approvalQueue = []
     hideBubble()
-    sebastianSay('Very well, sir. All approved.')
+    sebastianSay(pickRendererLine(RENDERER_LINES.approveAll))
   })
 
   // Click anywhere on bubble body to dismiss response (not approvals)
@@ -1261,6 +1422,11 @@ function sessionDisplayName(s) {
   return s.id ? s.id.slice(0, 8) : '???'
 }
 
+function getSessionColor(sessionId) {
+  const s = activeSessions.find(s => s.id === sessionId)
+  return s?.color || '#9ca3af'
+}
+
 function updateSessionSelect() {
   const prev = el.sessionSelect.value
   el.sessionSelect.innerHTML = '<option value="">No session</option>'
@@ -1268,9 +1434,21 @@ function updateSessionSelect() {
   for (const s of activeSessions) {
     const opt = document.createElement('option')
     opt.value = s.id
-    opt.textContent = sessionDisplayName(s)
+    const dot = s.color ? '\u25CF ' : ''
+    opt.textContent = dot + sessionDisplayName(s)
+    opt.style.color = s.color || '#e4e4e7'
     if (s.id === prev || s.id === selectedSessionId) opt.selected = true
     el.sessionSelect.appendChild(opt)
+  }
+
+  // Tint the select border to match current session
+  const currentSession = activeSessions.find(s => s.id === (el.sessionSelect.value || selectedSessionId))
+  if (currentSession?.color) {
+    el.sessionSelect.style.borderColor = currentSession.color
+    el.sessionSelect.style.color = currentSession.color
+  } else {
+    el.sessionSelect.style.borderColor = ''
+    el.sessionSelect.style.color = ''
   }
 
   // Keep selection valid
@@ -1289,6 +1467,15 @@ function setupChat() {
   })
   el.sessionSelect.addEventListener('change', () => {
     selectedSessionId = el.sessionSelect.value || null
+    // Update select border color to match session
+    const s = activeSessions.find(s => s.id === selectedSessionId)
+    if (s?.color) {
+      el.sessionSelect.style.borderColor = s.color
+      el.sessionSelect.style.color = s.color
+    } else {
+      el.sessionSelect.style.borderColor = ''
+      el.sessionSelect.style.color = ''
+    }
   })
 
   // Mic button — click to toggle recording
@@ -1317,12 +1504,12 @@ function sendChat() {
     const targetName = targetSession ? sessionDisplayName(targetSession) : 'session'
     console.log('[sendChat] Sent to:', targetName, targetId)
     el.statusMood.textContent = `Sent to ${targetName}...`
-    sebastianSay('Delivering your message, sir.')
+    sebastianSay(pickRendererLine(RENDERER_LINES.chatSent))
     setExternalEmotion('speaking', 'Delivering...')
   } else {
     console.log('[sendChat] No session selected!')
     el.statusMood.textContent = 'Select a session first'
-    sebastianSay('No session selected, sir.')
+    sebastianSay(pickRendererLine(RENDERER_LINES.noSession))
   }
 }
 
@@ -1403,7 +1590,7 @@ function setupQuickActions() {
     const targetId = selectedSessionId || (activeSessions.length === 1 ? activeSessions[0].id : null)
     if (targetId) {
       window.api.sendCommand(targetId, '/compact')
-      sebastianSay('Compacting context, sir.')
+      sebastianSay(pickRendererLine(RENDERER_LINES.compact))
       setExternalEmotion('thinking', 'Compacting...')
     }
   })
@@ -1413,7 +1600,7 @@ function setupQuickActions() {
     const targetId = selectedSessionId || (activeSessions.length === 1 ? activeSessions[0].id : null)
     if (targetId) {
       window.api.sendCommand(targetId, '/auto-accept')
-      sebastianSay('Toggling auto-accept, sir.')
+      sebastianSay(pickRendererLine(RENDERER_LINES.autoAccept))
     }
   })
 
@@ -1547,7 +1734,7 @@ async function startRecording() {
     isRecording = false
     el.chatMic.classList.remove('recording')
     el.chatInput.placeholder = 'Talk to Claude...'
-    sebastianSay('Microphone access denied, sir.')
+    sebastianSay(pickRendererLine(RENDERER_LINES.micDenied))
   }
 }
 
@@ -1574,7 +1761,7 @@ async function finishRecording() {
   if (totalLength === 0) {
     el.chatMic.classList.remove('recording')
     el.chatInput.placeholder = 'Talk to Claude...'
-    sebastianSay('I did not hear anything, sir.')
+    sebastianSay(pickRendererLine(RENDERER_LINES.noAudio))
     return
   }
 
@@ -1601,15 +1788,15 @@ async function finishRecording() {
       sendChat()
     } else if (result.error) {
       console.log('[recording] Error:', result.error)
-      sebastianSay('I could not understand, sir.')
+      sebastianSay(pickRendererLine(RENDERER_LINES.noUnderstand))
     } else {
-      sebastianSay('I did not hear anything, sir.')
+      sebastianSay(pickRendererLine(RENDERER_LINES.noAudio))
     }
   } catch (err) {
     console.log('[recording] Transcription failed:', err)
     el.chatMic.classList.remove('recording')
     el.chatInput.placeholder = 'Talk to Claude...'
-    sebastianSay('Voice input is not available, sir.')
+    sebastianSay(pickRendererLine(RENDERER_LINES.noAudio))
   }
 }
 

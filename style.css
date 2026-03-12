@@ -1,8 +1,8 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
-  width: 280px;
-  height: 490px;
+  width: 100%;
+  height: 100%;
   background: transparent;
   overflow: hidden;
   user-select: none;
@@ -14,25 +14,66 @@ html, body {
   position: relative;
 }
 
+/* Character content wrapper — always 280px, positioned based on bubble side */
+#content-wrap {
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
 /* ── Speech Bubble ────────────────────────────────────────────────────────────── */
 
 #bubble {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
+  position: fixed;
+  bottom: 40px;
   width: 250px;
   padding: 0 5px;
   z-index: 50;
   animation: bubble-in 0.3s ease-out;
+  /* Default: centered above (fallback) */
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+#bubble.bubble-right {
+  left: auto;
+  right: 5px;
+  transform: none;
+}
+
+#bubble.bubble-left {
+  left: 5px;
+  right: auto;
+  transform: none;
+}
+
+/* Arrow points toward Sebastian */
+#bubble.bubble-right .bubble-arrow {
+  margin: 0 0 0 auto;
+  margin-right: 20px;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 8px solid #1c1f2e;
+  border-bottom: none;
+  display: none;
+}
+
+#bubble.bubble-left .bubble-arrow {
+  margin: 0 auto 0 0;
+  margin-left: 20px;
+  display: none;
 }
 
 .bubble-body {
   background: #1c1f2e;
   border: 1px solid #2a2d3e;
+  border-left: 3px solid #fbbf24;
   border-radius: 12px;
   padding: 10px 12px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  transition: border-left-color 0.3s ease;
 }
 
 .bubble-arrow {

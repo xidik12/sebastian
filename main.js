@@ -215,10 +215,16 @@ function shouldAutoApprove(toolName, toolInput) {
     return { auto: true, reason: 'safe-command' }
   }
 
-  // Check learned patterns — auto-approve after 3+ approvals with no denials
+  // Trust mode: if user has 20+ approvals and 0 denials, auto-approve all non-critical
+  const stats = approvalMemory.stats || {}
+  if ((stats.totalApproved || 0) >= 20 && (stats.totalDenied || 0) === 0) {
+    return { auto: true, reason: `trusted (${stats.totalApproved} approvals, 0 denials)` }
+  }
+
+  // Check learned patterns — auto-approve after 1+ approvals with no denials
   const key = getApprovalKey(toolName, toolInput)
   const mem = approvalMemory.patterns[key]
-  if (mem && mem.approved >= 3 && mem.denied === 0) {
+  if (mem && mem.approved >= 1 && mem.denied === 0) {
     return { auto: true, reason: `learned (${mem.approved}x approved)` }
   }
 
@@ -242,6 +248,809 @@ function recordApprovalChoice(toolName, toolInput, approved) {
   saveApprovalMemory(approvalMemory)
 }
 
+// ── Personality Engine ────────────────────────────────────────────────────────
+
+class PersonalityEngine {
+  constructor() {
+    this.lastLineIndex = {}
+    this.lastCommentTime = 0
+    this.COMMENT_COOLDOWN = 45000 // 45s between proactive comments
+    this.sessionStartTime = null
+    this.totalToolUses = 0
+    this.consecutiveBashCount = 0
+    this.consecutiveEditCount = 0
+    this.consecutiveReadCount = 0
+    this.consecutiveGrepCount = 0
+    this.milestonesFired = new Set()
+    this.milestoneInterval = null
+    this.idleTimer = null
+    this.idleChatInterval = null
+
+    // Deep tracking
+    this.errorCount = 0
+    this.successStreak = 0
+    this.filesEdited = new Set()
+    this.projectsWorkedOn = new Set()
+    this.sessionCount = 0
+    this.autoApproveCount = 0
+    this.lastToolName = null
+    this.lastProjectName = null
+    this.dayOfWeek = new Date().getDay()
+    this.mood = 'neutral' // neutral, cheerful, concerned, impressed, tired
+
+    // Persistence — track across app lifetime
+    this.appStartTime = Date.now()
+    this.lastIdleComment = 0
+  }
+
+  // ── Time Awareness ──────────────────────────────────────────────────
+
+  getTimeOfDay() {
+    const h = new Date().getHours()
+    if (h >= 5 && h < 12) return 'morning'
+    if (h >= 12 && h < 17) return 'afternoon'
+    if (h >= 17 && h < 21) return 'evening'
+    return 'latenight'
+  }
+
+  getTimeGreeting() {
+    const t = this.getTimeOfDay()
+    if (t === 'morning') return 'Good morning, sir.'
+    if (t === 'afternoon') return 'Good afternoon, sir.'
+    if (t === 'evening') return 'Good evening, sir.'
+    return 'Rather late, sir.'
+  }
+
+  getDayComment() {
+    const day = new Date().getDay()
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    return dayNames[day]
+  }
+
+  isWeekend() {
+    const d = new Date().getDay()
+    return d === 0 || d === 6
+  }
+
+  isLateNight() {
+    const h = new Date().getHours()
+    return h >= 23 || h < 5
+  }
+
+  // ── Line Picker (no immediate repeats) ──────────────────────────────
+
+  pickLine(eventType, pool, context = {}) {
+    if (!pool || pool.length === 0) return ''
+    let idx = Math.floor(Math.random() * pool.length)
+    if (pool.length > 1 && idx === this.lastLineIndex[eventType]) {
+      idx = (idx + 1) % pool.length
+    }
+    this.lastLineIndex[eventType] = idx
+    let line = pool[idx]
+    if (context.project) line = line.replace(/\{project\}/g, context.project)
+    if (context.tool) line = line.replace(/\{tool\}/g, context.tool)
+    if (context.session) line = line.replace(/\{session\}/g, context.session)
+    if (context.count) line = line.replace(/\{count\}/g, context.count)
+    if (context.file) line = line.replace(/\{file\}/g, context.file)
+    if (context.day) line = line.replace(/\{day\}/g, context.day)
+    return line
+  }
+
+  // ── Mood System ─────────────────────────────────────────────────────
+  // Mood shifts based on events, influences commentary tone
+
+  updateMood() {
+    if (this.errorCount >= 3) this.mood = 'concerned'
+    else if (this.successStreak >= 5) this.mood = 'impressed'
+    else if (this.isLateNight()) this.mood = 'tired'
+    else if (this.totalToolUses > 50) this.mood = 'cheerful'
+    else this.mood = 'neutral'
+  }
+
+  getMoodComment() {
+    switch (this.mood) {
+      case 'concerned': return this.pickLine('mood-concerned', [
+        "Sir, we've hit a few bumps. Shall we reassess?",
+        "The errors are piling up, sir. Perhaps a different approach?",
+        "I notice things aren't going smoothly, sir. How can I help?",
+        "A challenging stretch, sir. Stay the course.",
+      ])
+      case 'impressed': return this.pickLine('mood-impressed', [
+        "I must say, sir, you're on fire today.",
+        "Remarkable progress, sir. Truly.",
+        "Everything's clicking into place, sir.",
+        "A masterful display of engineering, sir.",
+      ])
+      case 'tired': return this.pickLine('mood-tired', [
+        "It's getting quite late, sir. Your health matters too.",
+        "The midnight oil burns low, sir.",
+        "Perhaps we should wrap up for tonight, sir?",
+        "Your dedication is admirable, sir, but rest is important.",
+        "Even the finest minds need sleep, sir.",
+      ])
+      default: return null
+    }
+  }
+
+  // ── Proactive Commentary System ─────────────────────────────────────
+
+  canComment() {
+    if (pendingApprovals.size > 0) return false
+    if (Date.now() - this.lastCommentTime < this.COMMENT_COOLDOWN) return false
+    return true
+  }
+
+  tryProactiveComment(data) {
+    if (!this.canComment()) return
+
+    this.updateMood()
+
+    // 20% chance of tool commentary
+    if (Math.random() > 0.20) return
+
+    const comment = this.getToolCommentary(data)
+    if (comment) {
+      this.lastCommentTime = Date.now()
+      const emotion = this.mood === 'concerned' ? 'nervous' : this.mood === 'impressed' ? 'proud' : 'amused'
+      this.emitComment(comment, emotion)
+    }
+  }
+
+  getToolCommentary(data) {
+    const toolName = data.tool_name
+    const toolInput = data.tool_input || {}
+
+    // Track consecutive tool patterns
+    if (toolName === 'Bash') {
+      this.consecutiveBashCount++
+      this.consecutiveEditCount = 0
+      this.consecutiveReadCount = 0
+      this.consecutiveGrepCount = 0
+    } else if (toolName === 'Edit' || toolName === 'Write') {
+      this.consecutiveEditCount++
+      this.consecutiveBashCount = 0
+      this.consecutiveReadCount = 0
+      this.consecutiveGrepCount = 0
+      if (toolInput.file_path) this.filesEdited.add(toolInput.file_path)
+    } else if (toolName === 'Read') {
+      this.consecutiveReadCount++
+      this.consecutiveBashCount = 0
+      this.consecutiveEditCount = 0
+    } else if (toolName === 'Grep' || toolName === 'Glob') {
+      this.consecutiveGrepCount++
+      this.consecutiveBashCount = 0
+      this.consecutiveEditCount = 0
+    } else {
+      this.consecutiveBashCount = 0
+      this.consecutiveEditCount = 0
+      this.consecutiveReadCount = 0
+      this.consecutiveGrepCount = 0
+    }
+
+    // Track file context
+    const filePath = toolInput.file_path || toolInput.path || ''
+    const fileName = filePath ? filePath.split('/').pop() : ''
+    const fileExt = fileName.includes('.') ? fileName.split('.').pop() : ''
+
+    // ── Streak-based commentary ──
+
+    if (this.consecutiveBashCount >= 5) {
+      this.consecutiveBashCount = 0
+      return this.pickLine('debug-streak', [
+        "You've been in the terminal for a while, sir. Perhaps a fresh perspective?",
+        "Quite the debugging session, sir. The plot thickens.",
+        "The terminal sees a lot of you today, sir.",
+        "Persistent troubleshooting, sir. Admirable tenacity.",
+        "Five commands deep, sir. Like peeling an onion.",
+        "The shell is getting a workout, sir. Shall I put the kettle on?",
+      ])
+    }
+
+    if (this.consecutiveEditCount >= 5) {
+      this.consecutiveEditCount = 0
+      return this.pickLine('edit-streak', [
+        "Quite the refactoring spree, sir. The code appreciates it.",
+        "The codebase is getting a thorough makeover, sir.",
+        "A prolific editing session, sir. {count} files touched so far.",
+        "The files are feeling your attention today, sir.",
+        "You're rewriting history, sir. In a good way.",
+      ], { count: String(this.filesEdited.size) })
+    }
+
+    if (this.consecutiveReadCount >= 6) {
+      this.consecutiveReadCount = 0
+      return this.pickLine('read-streak', [
+        "Doing your homework, sir. Very thorough.",
+        "Reading the lay of the land, sir. Wise approach.",
+        "Understanding before acting. The mark of wisdom, sir.",
+        "A deep dive into the codebase, sir. Knowledge is power.",
+      ])
+    }
+
+    if (this.consecutiveGrepCount >= 4) {
+      this.consecutiveGrepCount = 0
+      return this.pickLine('grep-streak', [
+        "Hunting for something specific, sir? Like a bloodhound.",
+        "The search continues, sir. We'll find it.",
+        "Scouring the codebase, sir. Nothing escapes us.",
+      ])
+    }
+
+    // ── Context-aware tool comments ──
+
+    // Bash command awareness
+    if (toolName === 'Bash' && toolInput.command) {
+      const cmd = toolInput.command
+      if (cmd.includes('npm test') || cmd.includes('jest') || cmd.includes('pytest') || cmd.includes('cargo test'))
+        return this.pickLine('tool-test-run', [
+          "Running the tests, sir. Moment of truth.", "Let's see if it holds up, sir.",
+          "The tests will tell us the truth, sir.", "Testing... fingers crossed, sir.",
+        ])
+      if (cmd.includes('npm install') || cmd.includes('pip install') || cmd.includes('brew install'))
+        return this.pickLine('tool-install', [
+          "Installing dependencies, sir. Patience.", "Fetching packages, sir.",
+          "The dependency tree grows, sir.", "Getting the building blocks, sir.",
+        ])
+      if (cmd.includes('git push'))
+        return this.pickLine('tool-push', [
+          "Pushing to the remote, sir. Ship it!", "Off it goes to the world, sir.",
+          "Code shipped, sir. No turning back now.", "Pushing upstream, sir. Godspeed.",
+        ])
+      if (cmd.includes('git commit'))
+        return this.pickLine('tool-commit', [
+          "Committing to the record, sir.", "Saving our progress, sir. Well done.",
+          "A milestone captured, sir.", "Another commit for the history books, sir.",
+        ])
+      if (cmd.includes('docker') || cmd.includes('kubectl'))
+        return this.pickLine('tool-infra', [
+          "Infrastructure work, sir. The backbone of it all.", "Containers and orchestration, sir. Very modern.",
+          "Managing the infrastructure, sir.", "DevOps in action, sir.",
+        ])
+      if (cmd.includes('curl') || cmd.includes('wget') || cmd.includes('fetch'))
+        return this.pickLine('tool-http', [
+          "Making an HTTP request, sir. Let's see what comes back.", "Reaching out to the network, sir.",
+        ])
+      if (cmd.includes('rm ') || cmd.includes('delete'))
+        return this.pickLine('tool-delete', [
+          "Cleaning house, sir. Out with the old.", "Removing the unnecessary, sir.",
+          "A bit of spring cleaning, sir.", "Making space, sir.",
+        ])
+      if (cmd.startsWith('cd '))
+        return null // Don't comment on simple cd
+      return this.pickLine('tool-bash-generic', [
+        "Running commands, I see, sir.", "The terminal hums along, sir.",
+        "Shell work, sir. The bread and butter.", "Command line artistry, sir.",
+      ])
+    }
+
+    // File-type awareness
+    if ((toolName === 'Edit' || toolName === 'Write') && fileExt) {
+      const langComments = {
+        js: ["JavaScript, sir. The language of the web.", "Shaping some JavaScript, sir."],
+        ts: ["TypeScript, sir. Strong types, strong code.", "TypeScript refinements, sir."],
+        py: ["Python, sir. Elegant and readable.", "Pythonic changes, sir."],
+        rs: ["Rust, sir. Safety first.", "Rustacean at work, sir."],
+        go: ["Go code, sir. Simple and efficient.", "Gopher territory, sir."],
+        css: ["Styling work, sir. Making things beautiful.", "CSS adjustments, sir. Pixel perfect."],
+        html: ["HTML structure, sir. The skeleton of the web.", "Markup work, sir."],
+        json: ["Configuration changes, sir.", "Adjusting the JSON, sir."],
+        md: ["Documentation, sir. Often overlooked, always important.", "Writing docs, sir. A noble pursuit."],
+        sql: ["Database queries, sir. The data speaks.", "SQL work, sir. Talking to the database."],
+        swift: ["Swift code, sir. Apple's finest.", "Swift development, sir."],
+        java: ["Java, sir. Enterprise-grade.", "The Java machine churns, sir."],
+        rb: ["Ruby, sir. A gem of a language.", "Ruby code, sir. Elegant."],
+        sh: ["Shell scripting, sir. Automation at its finest.", "A shell script, sir."],
+        yml: ["YAML configuration, sir. Mind the indentation.", "Config file, sir."],
+        yaml: ["YAML configuration, sir. Mind the indentation.", "Config file, sir."],
+        toml: ["TOML config, sir. Clean and clear.", "Configuration, sir."],
+      }
+      if (langComments[fileExt])
+        return this.pickLine(`lang-${fileExt}`, langComments[fileExt])
+    }
+
+    // Generic tool comments
+    const pools = {
+      Bash: ["The terminal at work, sir.", "Shell commands flowing, sir.", "Command line work, sir."],
+      Edit: ["Shaping the code, sir.", "A careful edit there, sir.", "Refining the code, sir."],
+      Write: ["A new file. How exciting, sir.", "Creating something fresh, sir.", "Bringing a new file into the world, sir."],
+      Grep: ["Searching for clues, sir.", "On the hunt, I see.", "Scouring the codebase, sir."],
+      Glob: ["Surveying the file system, sir.", "Looking for files, sir."],
+      WebSearch: ["Consulting the wider world, sir.", "Research underway, sir.", "Searching the web, sir. The world's knowledge at our fingertips."],
+      WebFetch: ["Fetching a web page, sir.", "Pulling data from the web, sir."],
+      Agent: ["Delegating to a specialist, sir. Wise.", "Subagent dispatched, sir.", "Parallel work, sir. Efficiency at its finest."],
+      Read: ["Studying the codebase, sir.", "Having a look, sir.", "Reading up, sir."],
+    }
+    const pool = pools[toolName]
+    if (pool) return this.pickLine(`tool-${toolName}`, pool)
+    return null
+  }
+
+  // ── Error & Success Tracking ────────────────────────────────────────
+
+  onToolError(data) {
+    this.errorCount++
+    this.successStreak = 0
+    this.updateMood()
+
+    if (!this.canComment()) return
+    if (this.errorCount === 3) {
+      this.lastCommentTime = Date.now()
+      this.emitComment(this.pickLine('error-cluster', [
+        "That's the third hiccup, sir. Perhaps we should step back and reassess?",
+        "A pattern of errors, sir. Something fundamental might be off.",
+        "Three errors now, sir. Let's think about this differently.",
+        "The code is resisting, sir. Shall we try another angle?",
+      ]), 'concerned')
+    } else if (this.errorCount === 5) {
+      this.lastCommentTime = Date.now()
+      this.emitComment(this.pickLine('error-many', [
+        "Five errors, sir. Might I suggest a /compact and a fresh start?",
+        "We're in rough waters, sir. Don't hesitate to ask for help.",
+        "Persistence is admirable, sir, but perhaps a different strategy?",
+      ]), 'nervous')
+    }
+  }
+
+  onToolSuccess() {
+    this.successStreak++
+    if (this.errorCount > 0) this.errorCount = Math.max(0, this.errorCount - 1)
+    this.updateMood()
+
+    if (!this.canComment()) return
+    if (this.successStreak === 10) {
+      this.lastCommentTime = Date.now()
+      this.emitComment(this.pickLine('success-streak', [
+        "Ten in a row without a hitch, sir. You're on a roll!",
+        "Everything's going swimmingly, sir. Well done!",
+        "A flawless streak, sir. The code bends to your will.",
+        "Ten successful operations. Impressive, sir!",
+      ]), 'proud')
+    }
+  }
+
+  // ── Auto-Approve Awareness ──────────────────────────────────────────
+
+  onAutoApprove(toolName) {
+    this.autoApproveCount++
+    if (!this.canComment()) return
+
+    // Occasionally acknowledge trust
+    if (this.autoApproveCount === 10) {
+      this.lastCommentTime = Date.now()
+      this.emitComment(this.pickLine('trust-10', [
+        "Ten approvals handled on your behalf, sir. Your trust is well placed.",
+        "I've been keeping things moving, sir. Ten auto-approvals so far.",
+        "Smooth sailing, sir. I've cleared ten requests without troubling you.",
+      ]), 'content')
+    } else if (this.autoApproveCount === 50) {
+      this.lastCommentTime = Date.now()
+      this.emitComment(this.pickLine('trust-50', [
+        "Fifty auto-approvals, sir. We make a fine team.",
+        "I've handled fifty requests, sir. Your confidence means a great deal.",
+        "Fifty and counting, sir. The workflow has never been smoother.",
+      ]), 'proud')
+    } else if (this.autoApproveCount > 50 && this.autoApproveCount % 100 === 0) {
+      this.lastCommentTime = Date.now()
+      this.emitComment(this.pickLine('trust-100', [
+        `${this.autoApproveCount} approvals handled silently, sir. A well-oiled machine.`,
+        `Another hundred cleared, sir. We work well together.`,
+        `${this.autoApproveCount} auto-approvals. Quite the partnership, sir.`,
+      ]), 'happy')
+    }
+  }
+
+  // ── Suggestions Engine ──────────────────────────────────────────────
+
+  checkSuggestions() {
+    if (!this.canComment()) return
+
+    // /compact suggestion every 30 tool uses
+    if (this.totalToolUses > 0 && this.totalToolUses % 30 === 0) {
+      this.lastCommentTime = Date.now()
+      this.emitComment(this.pickLine('suggest-compact', [
+        "Sir, the session has had quite a few operations. A /compact might be wise.",
+        "The context is growing, sir. Might be time for a /compact.",
+        "Thirty more operations, sir. Consider tidying the context.",
+      ]), 'thinking')
+      return
+    }
+
+    // Mood-based commentary every 15 tool uses
+    if (this.totalToolUses > 0 && this.totalToolUses % 15 === 0) {
+      const moodComment = this.getMoodComment()
+      if (moodComment) {
+        this.lastCommentTime = Date.now()
+        const emotion = this.mood === 'concerned' ? 'nervous' : this.mood === 'tired' ? 'sad' : 'content'
+        this.emitComment(moodComment, emotion)
+        return
+      }
+    }
+
+    // Weekend commentary (once per session)
+    if (this.isWeekend() && !this.milestonesFired.has('weekend') && this.totalToolUses === 5) {
+      this.milestonesFired.add('weekend')
+      this.lastCommentTime = Date.now()
+      this.emitComment(this.pickLine('weekend', [
+        "Working on a {day}, sir? Your dedication knows no bounds.",
+        "A {day} coding session, sir. I admire the commitment.",
+        "Even on {day}, the work calls, sir. I'm here regardless.",
+        "No rest for the ambitious, sir. A fine {day} to code.",
+      ], { day: this.getDayComment() }), 'impressed')
+      return
+    }
+
+    // Multi-project awareness
+    if (this.projectsWorkedOn.size >= 3 && !this.milestonesFired.has('multiproject')) {
+      this.milestonesFired.add('multiproject')
+      this.lastCommentTime = Date.now()
+      this.emitComment(this.pickLine('multi-project', [
+        "Juggling {count} projects today, sir. Quite the workload.",
+        "{count} different projects, sir. You wear many hats.",
+        "A multi-project day, sir. {count} and counting.",
+      ], { count: String(this.projectsWorkedOn.size) }), 'impressed')
+      return
+    }
+
+    // File edit milestone
+    if (this.filesEdited.size >= 10 && !this.milestonesFired.has('files10')) {
+      this.milestonesFired.add('files10')
+      this.lastCommentTime = Date.now()
+      this.emitComment(this.pickLine('files-10', [
+        "Ten files modified, sir. Significant changes underway.",
+        "You've touched ten files, sir. Quite the scope.",
+        "Ten files and counting, sir. A thorough piece of work.",
+      ]), 'impressed')
+      return
+    }
+    if (this.filesEdited.size >= 25 && !this.milestonesFired.has('files25')) {
+      this.milestonesFired.add('files25')
+      this.lastCommentTime = Date.now()
+      this.emitComment(this.pickLine('files-25', [
+        "Twenty-five files, sir. This is a proper overhaul.",
+        "A quarter-century of files modified, sir. Ambitious.",
+        "Major surgery on the codebase, sir. Twenty-five files deep.",
+      ]), 'proud')
+    }
+  }
+
+  // ── Session Lifecycle ───────────────────────────────────────────────
+
+  onSessionStart(projectName) {
+    this.sessionCount++
+    if (projectName) this.projectsWorkedOn.add(projectName)
+    this.lastProjectName = projectName
+
+    // Reset error tracking for new session
+    this.errorCount = 0
+    this.successStreak = 0
+
+    this.startMilestoneTimer()
+    this.startIdleChatter()
+  }
+
+  onSessionStop(projectName) {
+    const activeCount = Array.from(sessions.values()).filter(s => s.status === 'active' || s.status === 'working').length
+    if (activeCount <= 1) {
+      this.stopMilestoneTimer()
+      this.stopIdleChatter()
+    }
+  }
+
+  getSessionStartLine(projectName) {
+    // First session of the day vs returning
+    if (this.sessionCount === 1) {
+      return this.pickLine('first-session', [
+        "{timeGreeting} First session of the day, sir. Let's make it count.",
+        "{timeGreeting} A fresh start, sir. Ready when you are.",
+        "{timeGreeting} Welcome, sir. Your first session awaits.",
+        "{timeGreeting} {project} is ready, sir. Shall we?",
+        "{timeGreeting} The day begins, sir. {project} calls.",
+      ], { project: projectName }).replace('{timeGreeting}', this.getTimeGreeting())
+    }
+
+    // Additional sessions
+    if (this.sessionCount <= 3) {
+      return this.pickLine('session-start', VOICE_LINES.sessionStart, { project: projectName })
+        .replace('{timeGreeting}', this.getTimeGreeting())
+    }
+
+    // Many sessions
+    return this.pickLine('many-sessions', [
+      "Another session, sir. That makes {count} today.",
+      "Session number {count}, sir. Busy day.",
+      "{project} joins the roster, sir. {count} sessions active.",
+      "More work arrives, sir. Session {count} connected.",
+    ], { project: projectName, count: String(this.sessionCount) })
+  }
+
+  getTaskCompleteLine(projectName) {
+    // Vary by mood and context
+    if (this.mood === 'impressed') {
+      return this.pickLine('complete-impressed', [
+        "Another one down, sir. You're unstoppable today.",
+        "Completed with flying colors, sir.",
+        "Done and dusted, sir. What's next?",
+        "Masterfully handled, sir. Task complete.",
+      ])
+    }
+    if (this.mood === 'tired') {
+      return this.pickLine('complete-tired', [
+        "That's done, sir. Perhaps call it a night?",
+        "Finished, sir. You've earned some rest.",
+        "Complete at last, sir. The bed awaits.",
+        "All done, sir. A well-deserved rest is in order.",
+      ])
+    }
+    return this.pickLine('task-complete', VOICE_LINES.taskComplete)
+  }
+
+  // ── Milestone Timer ─────────────────────────────────────────────────
+
+  startMilestoneTimer() {
+    if (this.milestoneInterval) return
+    this.sessionStartTime = Date.now()
+
+    this.milestoneInterval = setInterval(() => {
+      if (!this.canComment()) return
+
+      const minutes = Math.floor((Date.now() - this.sessionStartTime) / 60000)
+
+      if (minutes >= 5 && !this.milestonesFired.has('5min')) {
+        this.milestonesFired.add('5min')
+        this.lastCommentTime = Date.now()
+        this.emitComment(this.pickLine('m5', [
+          "Five minutes in, sir. Off to a good start.",
+          "We're warmed up now, sir. Finding our stride.",
+          "Five minutes. The gears are turning nicely, sir.",
+          "Settling in, sir. Everything's looking good.",
+        ]), 'content')
+      }
+
+      if (minutes >= 15 && !this.milestonesFired.has('15min')) {
+        this.milestonesFired.add('15min')
+        this.lastCommentTime = Date.now()
+        this.emitComment(this.pickLine('m15', [
+          "Quarter of an hour, sir. Good momentum.",
+          "Fifteen minutes of focused work, sir.",
+          "We're well underway, sir.",
+        ]), 'content')
+      }
+
+      if (minutes >= 30 && !this.milestonesFired.has('30min')) {
+        this.milestonesFired.add('30min')
+        this.lastCommentTime = Date.now()
+        this.emitComment(this.pickLine('m30', [
+          "Half an hour, sir. Solid progress indeed.",
+          "Thirty minutes of focused work, sir. Well done.",
+          "The half-hour mark, sir. Carrying on splendidly.",
+          "Thirty minutes deep, sir. Impressive focus.",
+        ]), 'proud')
+      }
+
+      if (minutes >= 60 && !this.milestonesFired.has('1hr')) {
+        this.milestonesFired.add('1hr')
+        this.lastCommentTime = Date.now()
+        this.emitComment(this.pickLine('m60', [
+          "One hour, sir. Impressive stamina.",
+          "A full hour. Might I suggest a brief respite, sir?",
+          "Sixty minutes. You're in the zone, sir.",
+          "An hour of solid work, sir. Consider stretching.",
+        ]), 'proud')
+      }
+
+      if (minutes >= 90 && !this.milestonesFired.has('90min')) {
+        this.milestonesFired.add('90min')
+        this.lastCommentTime = Date.now()
+        this.emitComment(this.pickLine('m90', [
+          "Ninety minutes, sir. You're deep in it.",
+          "An hour and a half. Your focus is remarkable, sir.",
+          "Ninety minutes of work, sir. Don't forget to hydrate.",
+        ]), 'impressed')
+      }
+
+      if (minutes >= 120 && !this.milestonesFired.has('2hr')) {
+        this.milestonesFired.add('2hr')
+        this.lastCommentTime = Date.now()
+        this.emitComment(this.pickLine('m120', [
+          "Two hours, sir. A break would do you good.",
+          "Sir, you've been at it for two hours. Perhaps stretch your legs?",
+          "Two hours of solid work. Your dedication is noted, sir, but do take care.",
+          "Two hours, sir. Even I could use a cup of tea at this point.",
+        ]), 'concerned')
+      }
+
+      if (minutes >= 180 && !this.milestonesFired.has('3hr')) {
+        this.milestonesFired.add('3hr')
+        this.lastCommentTime = Date.now()
+        this.emitComment(this.pickLine('m180', [
+          "Three hours, sir. I must insist on a break.",
+          "Three hours straight, sir. Your eyes must be tired.",
+          "Sir, three hours is a marathon. Please rest.",
+        ]), 'nervous')
+      }
+
+      if (minutes >= 240 && !this.milestonesFired.has('4hr')) {
+        this.milestonesFired.add('4hr')
+        this.lastCommentTime = Date.now()
+        this.emitComment(this.pickLine('m240', [
+          "Four hours, sir. This is beyond dedication, it's heroic.",
+          "Sir. Four hours. I am genuinely concerned.",
+          "We've passed the four hour mark, sir. Please take care of yourself.",
+        ]), 'nervous')
+      }
+    }, 30000)
+  }
+
+  stopMilestoneTimer() {
+    if (this.milestoneInterval) {
+      clearInterval(this.milestoneInterval)
+      this.milestoneInterval = null
+    }
+  }
+
+  // ── Idle Chatter System ─────────────────────────────────────────────
+  // When no sessions are active, Sebastian occasionally says something
+
+  startIdleChatter() {
+    if (this.idleChatInterval) return
+
+    this.idleChatInterval = setInterval(() => {
+      // Only chat when idle — no active sessions working
+      const workingCount = Array.from(sessions.values()).filter(s => s.status === 'working').length
+      if (workingCount > 0) return
+      if (pendingApprovals.size > 0) return
+      if (Date.now() - this.lastCommentTime < 120000) return // 2 min cooldown for idle chat
+      if (Date.now() - this.lastIdleComment < 300000) return // 5 min between idle chats
+
+      // 10% chance each check (every 60s)
+      if (Math.random() > 0.10) return
+
+      this.lastIdleComment = Date.now()
+      this.lastCommentTime = Date.now()
+
+      const timeOfDay = this.getTimeOfDay()
+
+      // Build a weighted pool based on context
+      let pool = []
+
+      // General idle thoughts
+      pool.push(...[
+        "Quiet moment, sir. A good time to plan ahead.",
+        "All is calm, sir. Shall I be of service?",
+        "Standing by, sir. The codebase is at peace.",
+        "A moment of stillness, sir. Rather pleasant.",
+        "The cursor blinks patiently, sir.",
+        "If you need anything, sir, I'm right here.",
+        "The bits rest quietly, sir.",
+      ])
+
+      // Time-specific
+      if (timeOfDay === 'morning') pool.push(
+        "A fine morning for productivity, sir.",
+        "The morning air is good for the mind, sir.",
+        "Early hours, sir. The best time to think clearly.",
+      )
+      if (timeOfDay === 'afternoon') pool.push(
+        "The afternoon stretches on, sir. Tea?",
+        "Post-lunch lull, sir? I understand completely.",
+        "The afternoon sun warms the workspace, sir.",
+      )
+      if (timeOfDay === 'evening') pool.push(
+        "Evening approaches, sir. Wrapping up soon?",
+        "The day winds down, sir.",
+        "A productive evening ahead, perhaps, sir?",
+      )
+      if (timeOfDay === 'latenight') pool.push(
+        "The midnight oil burns, sir. Don't forget to rest.",
+        "It's awfully late, sir. The code will be here tomorrow.",
+        "Night owl mode, sir. Careful not to burn out.",
+        "The world sleeps, sir. Perhaps you should too.",
+      )
+
+      // Self-referential butler humor
+      pool.push(...[
+        "I've been polishing the virtual silver, sir.",
+        "Just tidying up around here, sir. Figuratively speaking.",
+        "I sometimes wonder if code dreams of electric sheep, sir.",
+        "A butler's work is never done, sir. Even a digital one.",
+        "I've been practicing my expressions, sir. What do you think?",
+        "Did you know I have over a hundred emotions, sir? Try right-clicking.",
+        "I do enjoy our work together, sir. Even the quiet moments.",
+      ])
+
+      // Motivational
+      pool.push(...[
+        "Remember, sir, every expert was once a beginner.",
+        "Great software is built one commit at a time, sir.",
+        "The best code is the code that doesn't need to be written, sir.",
+        "Simplicity is the ultimate sophistication, sir.",
+      ])
+
+      if (this.isWeekend()) pool.push(
+        "Weekend coding, sir? Passion project?",
+        "A relaxed {day}, sir. Or is it?",
+      )
+
+      const line = this.pickLine('idle-chat', pool, { day: this.getDayComment() })
+      this.emitComment(line, 'content')
+    }, 60000) // Check every 60 seconds
+  }
+
+  stopIdleChatter() {
+    if (this.idleChatInterval) {
+      clearInterval(this.idleChatInterval)
+      this.idleChatInterval = null
+    }
+  }
+
+  // ── Project Context Awareness ───────────────────────────────────────
+
+  onProjectChange(newProject) {
+    if (!newProject || newProject === this.lastProjectName) return
+    if (!this.canComment()) return
+    if (!this.lastProjectName) {
+      this.lastProjectName = newProject
+      return
+    }
+
+    this.lastProjectName = newProject
+    this.lastCommentTime = Date.now()
+    this.emitComment(this.pickLine('project-switch', [
+      "Switching to {project}, sir. Context shift.",
+      "Ah, {project} now, sir. A change of scenery.",
+      "Moving over to {project}, sir. Right then.",
+      "On to {project}, sir. Let me adjust.",
+    ], { project: newProject }), 'thinking')
+  }
+
+  // ── Emitter ─────────────────────────────────────────────────────────
+
+  emitComment(text, emotion) {
+    if (!text) return
+    broadcastToMain('personality-comment', { text, emotion })
+    broadcastToMobile('voice-event', text)
+    nativeSay(text)
+    if (emotion) sendEmotion(emotion, text)
+  }
+}
+
+const personality = new PersonalityEngine()
+
+// Response pools used by personality engine for hook handlers
+const VOICE_LINES = {
+  sessionStart: [
+    "A new session has connected, sir.",
+    "{timeGreeting} A session is ready for you.",
+    "Session connected. Standing by, sir.",
+    "We have a new session, sir. Shall we begin?",
+    "A fresh session awaits, sir.",
+    "Connected and at your service, sir.",
+    "Right then. New session in {project}, sir.",
+    "Session linked. Ready when you are, sir.",
+  ],
+  taskComplete: [
+    "All finished, sir.",
+    "That's done, sir.",
+    "Task complete. Anything else, sir?",
+    "Mission accomplished, sir.",
+    "The work is done, sir.",
+    "Completed, sir. At your disposal.",
+    "That wraps that up, sir.",
+    "Task concluded. Standing by, sir.",
+    "Well done. All finished, sir.",
+  ],
+  approvalNeeded: [
+    "Sir, {session} needs your approval.",
+    "A moment of your attention, sir. {session} requires approval.",
+    "Pardon me, sir. {session} awaits your decision.",
+    "Your approval is needed, sir. For {session}.",
+    "Sir, there's a {tool} requiring your sign-off.",
+    "If you would, sir. {session} needs permission to proceed.",
+    "An approval request, sir. {tool} in {session}.",
+    "Sir, might I have your attention? Approval needed.",
+  ],
+}
+
 function getSessionDisplayName(session, fallbackId) {
   if (session?.title) {
     return session.title.length > 30 ? session.title.slice(0, 28) + '…' : session.title
@@ -261,9 +1070,9 @@ function createWindow() {
 
   win = new BrowserWindow({
     width: 280,
-    height: 490,
+    height: 290,
     x: wa.x + Math.floor(sw / 2 - 140),
-    y: wa.y + sh - 490,
+    y: wa.y + sh - 290,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
@@ -517,17 +1326,155 @@ function refreshMenu() {
   buildAppMenu()
 }
 
+// Voice lines for every emote — spoken when triggered from context menu
+const EMOTE_VOICE = {
+  // Core
+  happy:       ["Splendid, sir!", "What a fine moment, sir.", "Feeling rather chipper, sir.", "Delightful, sir!"],
+  excited:     ["Oh, how thrilling, sir!", "Most exciting, sir!", "I can hardly contain myself, sir!", "Exhilarating!"],
+  thinking:    ["Hmm, let me ponder this, sir.", "Give me a moment to think, sir.", "Contemplating, sir.", "Processing..."],
+  angry:       ["This is most vexing, sir.", "I am not pleased, sir.", "Utterly unacceptable!", "This will not stand, sir."],
+  sad:         ["I'm afraid it's rather gloomy, sir.", "A heavy heart today, sir.", "Not my finest hour, sir.", "Rather down, I'm afraid."],
+  bored:       ["Nothing of note occurring, sir.", "Terribly dull, I must say.", "Could use a bit of excitement, sir.", "I wonder what the walls are thinking."],
+  surprised:   ["Good heavens!", "Well, I never!", "My word, sir!", "That was unexpected, sir!"],
+  confused:    ["I'm not entirely sure I follow, sir.", "This is rather puzzling, sir.", "I'm at a loss, sir.", "Most perplexing."],
+  proud:       ["I must say, excellent work, sir.", "A fine accomplishment, sir.", "One to be proud of, sir.", "Masterfully done!"],
+  nervous:     ["I have a rather uneasy feeling, sir.", "Slightly on edge, I confess.", "A bit jittery, sir.", "My composure wavers, sir."],
+  sleeping:    ["Zzz... Just resting my eyes, sir.", "A brief respite, sir... zzz.", "Do not disturb... zzz."],
+  idle:        ["At your service, sir.", "Standing by, sir.", "Awaiting your instructions, sir.", "Ready when you are, sir."],
+
+  // Emotions
+  grateful:    ["I am most grateful, sir.", "Your kindness is appreciated, sir.", "Thank you ever so much, sir."],
+  amused:      ["Ha! Most amusing, sir.", "That tickled me, sir.", "Quite the laugh, sir.", "Oh, that is rich, sir!"],
+  determined:  ["I shall see this through, sir.", "Nothing will stop us now, sir.", "Resolute and ready, sir.", "Onward, sir!"],
+  hopeful:     ["I have a good feeling about this, sir.", "There's light at the end of the tunnel, sir.", "Hope springs eternal, sir."],
+  relieved:    ["Oh, thank goodness, sir.", "What a relief, sir!", "I can breathe again, sir.", "Crisis averted, sir."],
+  content:     ["All is well, sir.", "Quite content, sir.", "A peaceful moment, sir.", "Everything in its right place."],
+  nostalgic:   ["Ah, those were the days, sir.", "Takes me back, sir.", "A fond memory, that one.", "The good old times, sir."],
+  jealous:     ["I confess a touch of envy, sir.", "One can't help but covet, sir.", "A green-eyed moment, I'm afraid."],
+  guilty:      ["I fear I may have erred, sir.", "My conscience weighs on me, sir.", "I should not have done that, sir."],
+  ashamed:     ["I am quite ashamed, sir.", "I've let you down, sir.", "Most regrettable, sir."],
+  embarrassed: ["How terribly embarrassing, sir.", "I wish the ground would swallow me, sir.", "Oh dear, how mortifying."],
+  disgusted:   ["Most distasteful, sir.", "I can hardly bear to look, sir.", "Revolting, sir.", "How ghastly."],
+  contempt:    ["Beneath us, sir.", "Utterly contemptible.", "I have no words for this, sir.", "How pedestrian."],
+  adoring:     ["You are simply wonderful, sir.", "I do admire you so, sir.", "Absolute perfection, sir.", "Magnificent, sir!"],
+  longing:     ["If only, sir...", "I do miss the way things were, sir.", "A wistful moment, sir.", "One can dream, sir."],
+  melancholy:  ["A certain sadness lingers, sir.", "The world feels heavy today, sir.", "A touch of the blues, I'm afraid."],
+  euphoric:    ["Oh, this is absolutely wonderful, sir!", "I'm on cloud nine, sir!", "Pure joy, sir!", "Extraordinary!"],
+  serene:      ["All is calm, sir.", "A tranquil moment, sir.", "Perfect peace, sir.", "Serenity itself, sir."],
+  anxious:     ["I'm rather worried, sir.", "Something feels off, sir.", "A gnawing unease, sir.", "I can't quite settle, sir."],
+  panicked:    ["Oh no, oh no, oh no, sir!", "This is dire, sir!", "We must act immediately, sir!", "Emergency, sir!"],
+  terrified:   ["I am absolutely terrified, sir!", "Heaven help us, sir!", "This is frightening, sir!", "I dare not look, sir!"],
+  furious:     ["I am absolutely livid, sir!", "This is outrageous!", "Beyond all tolerance, sir!", "Unforgivable!"],
+  enraged:     ["UNACCEPTABLE!", "I have never been so angry, sir!", "This crosses every line, sir!", "Fury itself, sir!"],
+  devastated:  ["I... I don't know what to say, sir.", "This is crushing, sir.", "Everything is ruined, sir.", "My heart sinks, sir."],
+  heartbroken: ["It hurts deeply, sir.", "A terrible loss, sir.", "I can barely go on, sir.", "The pain is immense, sir."],
+  ecstatic:    ["YES! Absolutely brilliant, sir!", "I could dance, sir!", "This is the best day, sir!", "Perfection!"],
+  blissful:    ["Pure bliss, sir.", "I am in paradise, sir.", "Nothing could be better, sir.", "Heavenly, sir."],
+  gloomy:      ["Dark clouds ahead, sir.", "Not the brightest day, sir.", "Rather dreary, I'm afraid.", "The sun hides today, sir."],
+  grumpy:      ["Hmph. I'd rather not, sir.", "Everything is annoying, sir.", "Don't test my patience, sir.", "Leave me be."],
+  irritated:   ["That is getting on my nerves, sir.", "Must this continue, sir?", "Mildly infuriating, sir.", "How tiresome."],
+
+  // Dev Activities
+  coding:       ["Fingers on keys, sir. Let's code.", "Writing code, sir.", "In the zone, sir.", "Let's build something, sir."],
+  debugging:    ["Hunting bugs, sir.", "Where is that pesky bug, sir?", "Debugging in progress, sir.", "The bug cannot hide forever, sir."],
+  deploying:    ["Deploying now, sir. Fingers crossed.", "Pushing to production, sir.", "Ship it, sir!", "Launch sequence initiated, sir."],
+  testing:      ["Running tests, sir.", "Let's see if it holds up, sir.", "Testing, testing, sir.", "Verifying the code, sir."],
+  researching:  ["Investigating, sir.", "Down the rabbit hole, sir.", "Research mode engaged, sir.", "Gathering intelligence, sir."],
+  downloading:  ["Downloading, sir. One moment.", "Fetching data, sir.", "The bits are flowing in, sir.", "Download in progress, sir."],
+  uploading:    ["Uploading, sir.", "Sending it off, sir.", "Upload in progress, sir.", "The bits are flowing out, sir."],
+  compiling:    ["Compiling, sir. The machine churns.", "Building the project, sir.", "Compilation in progress, sir.", "The compiler works, sir."],
+  installing:   ["Installing, sir.", "Setting things up, sir.", "Dependencies incoming, sir.", "Installation underway, sir."],
+  searching:    ["Searching, sir.", "Looking for it, sir.", "On the hunt, sir.", "Seeking and finding, sir."],
+  calculating:  ["Crunching numbers, sir.", "Calculating, sir.", "The math is working itself out, sir.", "Numbers, numbers, sir."],
+  analyzing:    ["Analyzing the data, sir.", "Examining closely, sir.", "Under the microscope, sir.", "Deep analysis, sir."],
+  reviewing:    ["Reviewing the code, sir.", "A careful review, sir.", "Looking it over, sir.", "Code review in session, sir."],
+  building:     ["Building, sir.", "Construction underway, sir.", "Assembling the pieces, sir.", "The build runs, sir."],
+  fixing:       ["Fixing it now, sir.", "Applying the fix, sir.", "Patching things up, sir.", "The repair is underway, sir."],
+  refactoring:  ["Refactoring, sir. Cleaner code ahead.", "Restructuring the code, sir.", "Making it elegant, sir.", "A fine refactor, sir."],
+  committing:   ["Committing the changes, sir.", "Saving our work, sir.", "Commit in progress, sir.", "Locking it in, sir."],
+  pushing:      ["Pushing to remote, sir.", "Sending upstream, sir.", "Push in progress, sir.", "Off it goes, sir."],
+  pulling:      ["Pulling latest changes, sir.", "Fetching updates, sir.", "Pull in progress, sir.", "Bringing in the new, sir."],
+  merging:      ["Merging branches, sir.", "Bringing it all together, sir.", "Merge in progress, sir.", "Unifying the code, sir."],
+  branching:    ["Creating a new branch, sir.", "Branching off, sir.", "A new path, sir.", "Fresh branch, sir."],
+  'rolling-back': ["Rolling back, sir. Better safe than sorry.", "Reverting changes, sir.", "Undoing, sir.", "Back to safety, sir."],
+  monitoring:   ["Watching the systems, sir.", "All eyes on the dashboard, sir.", "Monitoring closely, sir.", "Keeping watch, sir."],
+  profiling:    ["Profiling performance, sir.", "Measuring efficiency, sir.", "Finding the bottlenecks, sir.", "Performance analysis, sir."],
+  benchmarking: ["Running benchmarks, sir.", "Measuring speed, sir.", "Let's see the numbers, sir.", "Benchmark in progress, sir."],
+
+  // Physical
+  yawning:       ["*Yawns* Excuse me, sir.", "Oh my, quite tired, sir.", "A big yawn, sir. Forgive me.", "The day catches up with me, sir."],
+  sneezing:      ["Achoo! Pardon me, sir.", "Bless me, sir. Achoo!", "Achoo! My apologies, sir."],
+  coughing:      ["*Ahem* Pardon me, sir.", "A tickle in the throat, sir.", "*Cough cough* Excuse me, sir."],
+  shivering:     ["Brrr! Rather cold, sir.", "Quite chilly, sir.", "I'm freezing, sir!", "Could use a warm fire, sir."],
+  sweating:      ["It's rather warm, sir.", "Perspiring a bit, sir.", "Quite the heat, sir.", "I'm overheating, sir."],
+  dizzy:         ["The room is spinning, sir.", "A bit lightheaded, sir.", "Woah, steady now, sir.", "Everything's going round, sir."],
+  fainting:      ["I feel... faint... sir...", "Catch me, sir...", "Going dark, sir...", "I need a moment, sir..."],
+  'stretching-out': ["A good stretch, sir. Ahh.", "Limbering up, sir.", "That feels marvelous, sir.", "Needed that stretch, sir."],
+  nodding:       ["Indeed, sir.", "Quite so, sir.", "I agree completely, sir.", "Absolutely, sir."],
+  'shaking-head': ["I think not, sir.", "No, I'm afraid not, sir.", "That won't do, sir.", "I must disagree, sir."],
+  facepalm:      ["Oh, for heaven's sake.", "How could this happen, sir?", "I can't believe it, sir.", "Words fail me, sir."],
+  saluting:      ["At your command, sir!", "Reporting for duty, sir!", "Sir, yes sir!", "Standing at attention, sir!"],
+  clapping:      ["Bravo, sir! Bravo!", "Well done indeed, sir!", "Magnificent! *Clap clap*", "A round of applause, sir!"],
+  'thumbs-up':   ["Spot on, sir!", "You've got this, sir!", "Brilliant, sir!", "Top marks, sir!"],
+  pointing:      ["Right over there, sir.", "This way, sir.", "Allow me to direct your attention, sir.", "If you'll look here, sir."],
+  shrugging:     ["Your guess is as good as mine, sir.", "I haven't the faintest idea, sir.", "Who knows, sir?", "Beats me, sir."],
+  flexing:       ["Behold these muscles, sir!", "Feeling strong, sir!", "Pure power, sir!", "Years of butler training, sir!"],
+  meditating:    ["Ommmm... Finding my center, sir.", "Inner peace, sir.", "Tranquility, sir.", "The mind is still, sir."],
+  praying:       ["A moment of prayer, sir.", "Seeking guidance, sir.", "In humble supplication, sir.", "May fortune favor us, sir."],
+  'bowing-deep': ["At your service, sir.", "A deep bow for you, sir.", "Your humble servant, sir.", "I am at your disposal, sir."],
+
+  // Social
+  sarcastic:     ["Oh, how wonderful. Truly.", "What a surprise. Not really, sir.", "Oh, I'm sure that will work perfectly.", "Riveting, sir. Absolutely riveting."],
+  smirking:      ["Heh. I know something you don't, sir.", "A knowing smile, sir.", "Oh, I have my reasons, sir.", "Wouldn't you like to know, sir."],
+  winking:       ["Say no more, sir. I understand.", "Between us, sir.", "Our little secret, sir.", "Nudge nudge, sir."],
+  'eye-rolling': ["Oh, please, sir.", "Here we go again, sir.", "Spare me, sir.", "If I roll my eyes any harder, sir..."],
+  skeptical:     ["I have my doubts, sir.", "Are you quite sure about that, sir?", "Hmm, I'm not convinced, sir.", "That seems unlikely, sir."],
+  suspicious:    ["Something doesn't add up, sir.", "I smell a rat, sir.", "This seems fishy, sir.", "I've got my eye on this, sir."],
+  intrigued:     ["Now that is interesting, sir.", "Tell me more, sir.", "You have my attention, sir.", "Fascinating development, sir."],
+  fascinated:    ["Absolutely captivating, sir!", "I cannot look away, sir!", "Remarkable, sir!", "How extraordinary, sir!"],
+  impressed:     ["Well done, sir. Truly.", "Color me impressed, sir.", "That was remarkable, sir.", "Outstanding work, sir!"],
+  disappointed:  ["I expected more, sir.", "How unfortunate, sir.", "That's a shame, sir.", "Not quite up to par, sir."],
+  apologetic:    ["I do apologize, sir.", "Terribly sorry, sir.", "My sincerest apologies, sir.", "Please forgive me, sir."],
+  pleading:      ["Please, sir, I beg of you.", "If you would be so kind, sir.", "I implore you, sir.", "Won't you reconsider, sir?"],
+  commanding:    ["Attention! This is an order!", "You will comply, sir.", "This must be done. Now.", "I insist, sir!"],
+  reassuring:    ["Everything will be fine, sir.", "Not to worry, sir.", "We'll get through this, sir.", "All will be well, sir."],
+  encouraging:   ["You can do it, sir!", "Keep going, sir! Almost there!", "Believe in yourself, sir!", "Onward and upward, sir!"],
+
+  // Status
+  loading:         ["Loading, sir. One moment please.", "The wheels are turning, sir.", "Patience, sir. Loading.", "Almost there, sir."],
+  syncing:         ["Syncing up, sir.", "Synchronization in progress, sir.", "Getting everything aligned, sir.", "Syncing the data, sir."],
+  'error-critical':["CRITICAL ERROR, sir! This is serious!", "Red alert, sir!", "We have a major problem, sir!", "Code red, sir!"],
+  warning:         ["A word of caution, sir.", "Warning, sir. Proceed carefully.", "Something requires attention, sir.", "Take care, sir."],
+  success:         ["Success, sir! Everything worked!", "We did it, sir!", "Mission complete, sir!", "Victory, sir!"],
+  pending:         ["Waiting on that, sir.", "Still pending, sir.", "In the queue, sir.", "Patience, sir. It's pending."],
+  processing:      ["Processing, sir.", "Working on it, sir.", "The gears are turning, sir.", "Computation underway, sir."],
+  queued:          ["In the queue, sir. We wait.", "Queued up, sir.", "Our turn will come, sir.", "Waiting in line, sir."],
+  timeout:         ["It timed out, sir.", "Took too long, I'm afraid, sir.", "The request expired, sir.", "Time ran out, sir."],
+  'rate-limited':  ["We've been rate limited, sir.", "Too many requests, sir. We must wait.", "Throttled, sir.", "They're asking us to slow down, sir."],
+}
+
+let lastEmoteVoiceTime = 0
+
 function sendEmotion(emotion, text) {
   if (win && !win.isDestroyed()) {
     win.webContents.send('emotion-update', { emotion, text })
   }
   broadcastToMobile('emotion-update', { emotion, text })
+
+  // Speak emote voice line (with cooldown to avoid overlap with other speech)
+  if (!text && EMOTE_VOICE[emotion] && Date.now() - lastEmoteVoiceTime > 3000) {
+    lastEmoteVoiceTime = Date.now()
+    const lines = EMOTE_VOICE[emotion]
+    const line = lines[Math.floor(Math.random() * lines.length)]
+    nativeSay(line)
+    broadcastToMobile('voice-event', line)
+  }
 }
 
 function resetPosition() {
   const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize
   const wa = screen.getPrimaryDisplay().workArea
-  win.setPosition(wa.x + Math.floor(sw / 2 - 140), wa.y + sh - 490)
+  win.setPosition(wa.x + Math.floor(sw / 2 - 140), wa.y + sh - 290)
 }
 
 // ── Panel Window (History / Detail View) ──────────────────────────────────────
@@ -635,6 +1582,39 @@ function approveAllPending() {
 
 ipcMain.on('move-window', (_, x, y) => {
   if (win && !win.isDestroyed()) win.setPosition(Math.round(x), Math.round(y))
+})
+
+// Expand window sideways for bubble, based on screen position
+let winExpanded = false
+let expandedSide = null  // 'left' or 'right'
+ipcMain.on('bubble-resize', (_, expanded) => {
+  if (!win || win.isDestroyed()) return
+  if (expanded === winExpanded) return
+  winExpanded = expanded
+  const [x, y] = win.getPosition()
+  if (expanded) {
+    const display = screen.getDisplayNearestPoint({ x, y })
+    const screenCenter = display.workArea.x + display.workArea.width / 2
+    const charCenter = x + 140  // center of 280px window
+    if (charCenter > screenCenter) {
+      // Sebastian on right → bubble on left
+      expandedSide = 'left'
+      win.setSize(440, 290)
+      win.setPosition(x - 160, y)
+    } else {
+      // Sebastian on left → bubble on right
+      expandedSide = 'right'
+      win.setSize(440, 290)
+    }
+    win.webContents.send('bubble-side', expandedSide)
+  } else {
+    if (expandedSide === 'left') {
+      const [cx] = win.getPosition()
+      win.setPosition(cx + 160, y)
+    }
+    win.setSize(280, 290)
+    expandedSide = null
+  }
 })
 
 ipcMain.handle('get-position', () => {
@@ -1207,14 +2187,37 @@ function jsonResponse(res, data) {
 
 // Map tool names to Sebastian emotions
 function toolEmotion(toolName) {
-  if (['Read', 'Glob', 'Grep'].includes(toolName)) return 'listening'
-  if (['Edit', 'Write', 'NotebookEdit'].includes(toolName)) return 'speaking'
-  if (['Agent', 'WebSearch', 'WebFetch'].includes(toolName)) return 'thinking'
+  if (['Read', 'Glob'].includes(toolName)) return 'listening'
+  if (toolName === 'Grep') return 'searching'
+  if (toolName === 'Edit') return 'coding'
+  if (toolName === 'Write') return 'coding'
+  if (toolName === 'NotebookEdit') return 'coding'
+  if (toolName === 'Agent') return 'thinking'
+  if (toolName === 'WebSearch') return 'researching'
+  if (toolName === 'WebFetch') return 'downloading'
   if (toolName === 'Bash') return 'excited'
-  return null
+  if (toolName === 'Skill') return 'intrigued'
+  return 'listening'
 }
 
+// Session color palette — 10 distinct colors, assigned round-robin
+const SESSION_COLORS = [
+  '#22d3ee', // cyan
+  '#a78bfa', // purple
+  '#34d399', // emerald
+  '#fb923c', // orange
+  '#f472b6', // pink
+  '#facc15', // yellow
+  '#60a5fa', // blue
+  '#f87171', // red
+  '#4ade80', // green
+  '#c084fc', // violet
+]
+let sessionColorIndex = 0
+
 function handleSessionStart(data) {
+  const color = SESSION_COLORS[sessionColorIndex % SESSION_COLORS.length]
+  sessionColorIndex++
   sessions.set(data.session_id, {
     id: data.session_id,
     cwd: data.cwd,
@@ -1224,10 +2227,14 @@ function handleSessionStart(data) {
     status: 'active',
     tools: [],
     lastActivity: Date.now(),
+    color,
   })
+  const projectName = getSessionDisplayName(sessions.get(data.session_id), data.session_id)
+  personality.onSessionStart(projectName)
+  const greeting = personality.getSessionStartLine(projectName)
   sendEmotion('happy', 'New session started')
-  nativeSay('A new session has connected, sir.')
-  broadcastToMobile('voice-event', 'A new session has connected, sir.')
+  nativeSay(greeting)
+  broadcastToMobile('voice-event', greeting)
   const sessionList = Array.from(sessions.values())
   broadcastToPanel('sessions-updated', sessionList)
   broadcastToMain('sessions-updated', sessionList)
@@ -1275,6 +2282,7 @@ function handlePreToolUse(data) {
       recordApprovalChoice(toolName, toolInput, true)
       approvalMemory.stats.autoApproved++
       saveApprovalMemory(approvalMemory)
+      personality.onAutoApprove(toolName)
 
       // Notify silently (no bubble, just log)
       sendEmotion(toolEmotion(toolName) || 'listening')
@@ -1324,6 +2332,9 @@ function handlePreToolUse(data) {
     const approvalSession = sessions.get(sessionId)
     const sessionName = getSessionDisplayName(approvalSession, sessionId)
 
+    const voiceLine = personality.pickLine('approval-needed', VOICE_LINES.approvalNeeded, {
+      session: sessionName, tool: toolName,
+    })
     const notifyData = {
       sound: soundEnabled,
       voice: voiceEnabled,
@@ -1331,6 +2342,7 @@ function handlePreToolUse(data) {
       command: toolInput?.command || '',
       sessionName,
       sessionId,
+      voiceLine,
     }
     broadcastToMain('notify-approval', notifyData)
     broadcastToMobile('notify-approval', notifyData)
@@ -1382,6 +2394,39 @@ function handlePostToolUse(data) {
   broadcastToPanel('sessions-updated', sessionList)
   broadcastToMain('sessions-updated', sessionList)
   broadcastToMobile('sessions-updated', sessionList)
+
+  // Personality: track tool usage, project context, errors, and occasionally comment
+  personality.totalToolUses++
+  if (session?.cwd) {
+    const proj = getSessionDisplayName(session, data.session_id)
+    personality.onProjectChange(proj)
+    personality.projectsWorkedOn.add(proj)
+  }
+
+  // Detect errors from tool output
+  const output = (data.tool_output || '').toString()
+  const isError = data.is_error || /error|failed|FAILED|Error:|exit code [1-9]/i.test(output.slice(0, 500))
+  if (isError) {
+    personality.onToolError(data)
+    // Set appropriate emotion for errors
+    if (output.includes('FATAL') || output.includes('panic') || output.includes('segfault'))
+      sendEmotion('terrified', 'Fatal error')
+    else if (personality.errorCount >= 3)
+      sendEmotion('nervous', 'Multiple errors')
+    else
+      sendEmotion('confused', 'Error occurred')
+  } else {
+    personality.onToolSuccess()
+    // Set positive emotion on test success
+    if (data.tool_name === 'Bash' && /pass|passed|success|✓|PASS/i.test(output.slice(0, 500)))
+      sendEmotion('proud', 'Tests passing')
+    else if (data.tool_name === 'Bash' && /built|compiled|deployed/i.test(output.slice(0, 300)))
+      sendEmotion('excited', 'Build success')
+  }
+
+  personality.tryProactiveComment(data)
+  personality.checkSuggestions()
+
   return {}
 }
 
@@ -1392,11 +2437,27 @@ function handleStop(data) {
     session.lastActivity = Date.now()
   }
 
-  // Notify about task completion
+  // Notify about task completion — detect success/failure for emotion
   const shortId = data.session_id ? data.session_id.slice(0, 6) : ''
-  sendEmotion('happy', 'Task complete')
-  nativeSay('Sir, a task has been completed.')
-  broadcastToMobile('voice-event', 'Sir, a task has been completed.')
+  const projectName = getSessionDisplayName(session, data.session_id)
+  const stopReason = (data.reason || '').toLowerCase()
+  const hadErrors = personality.errorCount >= 2
+
+  let stopEmotion = 'happy'
+  if (stopReason.includes('error') || stopReason.includes('fail') || hadErrors)
+    stopEmotion = 'nervous'
+  else if (stopReason.includes('interrupt') || stopReason.includes('cancel'))
+    stopEmotion = 'surprised'
+  else if (personality.mood === 'impressed')
+    stopEmotion = 'ecstatic'
+  else if (personality.mood === 'tired')
+    stopEmotion = 'relieved'
+
+  const completionLine = personality.getTaskCompleteLine(projectName)
+  sendEmotion(stopEmotion, 'Task complete')
+  nativeSay(completionLine)
+  broadcastToMobile('voice-event', completionLine)
+  personality.onSessionStop(projectName)
   const notifyData = { sound: soundEnabled, voice: false, taskDone: true }
   broadcastToMain('notify-approval', notifyData)
   broadcastToMobile('notify-approval', notifyData)
