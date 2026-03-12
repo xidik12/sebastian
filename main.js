@@ -3024,6 +3024,8 @@ function discoverExistingSessions() {
           const sessionId = file.replace('.jsonl', '')
           if (sessions.has(sessionId)) continue
 
+          const color = SESSION_COLORS[sessionColorIndex % SESSION_COLORS.length]
+          sessionColorIndex++
           sessions.set(sessionId, {
             id: sessionId,
             cwd: cwd,
@@ -3033,6 +3035,7 @@ function discoverExistingSessions() {
             status: 'active',
             tools: [],
             lastActivity: fstat.mtimeMs,
+            color,
           })
           newSessions.push({ sessionId, filePath })
         }
