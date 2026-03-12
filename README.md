@@ -6,8 +6,6 @@ Sebastian is a living, breathing desktop companion for developers. He sits on yo
 
 He's not a chatbot. He's not a notification tray. He's a **character** — with moods, opinions, and over 116 unique emotions.
 
-https://github.com/user-attachments/assets/placeholder-demo.mp4
-
 ---
 
 ## Why Sebastian?
