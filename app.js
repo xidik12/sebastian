@@ -412,6 +412,7 @@ const S = {
   soundEnabled: true,
   voiceEnabled: false,
   lockPosition: false,
+  volume: 0.8,
 }
 
 // Approval queue (shown in bubble)
@@ -495,6 +496,8 @@ async function init() {
     settingVoice: $('setting-voice'),
     settingLock: $('setting-lock'),
     settingWake: $('setting-wake'),
+    settingVolume: $('setting-volume'),
+    volumeValue: $('volume-value'),
     settingsAvatarBtn: $('settings-avatar-btn'),
     settingsPanelBtn: $('settings-panel-btn'),
     settingsQuitBtn: $('settings-quit-btn'),
@@ -550,6 +553,9 @@ async function init() {
   el.settingVoice.checked = S.voiceEnabled
   el.settingLock.checked = S.lockPosition
   el.settingWake.checked = savedSettings.wakeWord === true
+  S.volume = savedSettings.volume != null ? savedSettings.volume : 0.8
+  el.settingVolume.value = Math.round(S.volume * 100)
+  el.volumeValue.textContent = Math.round(S.volume * 100) + '%'
 
   // Load initial sessions
   const initialSessions = await window.api.getSessions()
@@ -612,6 +618,7 @@ async function init() {
     if (data.voice !== undefined) { S.voiceEnabled = data.voice; el.settingVoice.checked = data.voice }
     if (data.lockPosition !== undefined) { S.lockPosition = data.lockPosition; el.settingLock.checked = data.lockPosition }
     if (data.wakeWord !== undefined) { el.settingWake.checked = data.wakeWord }
+    if (data.volume !== undefined) { S.volume = data.volume; el.settingVolume.value = Math.round(data.volume * 100); el.volumeValue.textContent = Math.round(data.volume * 100) + '%' }
   })
 
   // Session response (from chat or completion) — show in bubble + speak with emotion
@@ -1558,6 +1565,13 @@ function setupSettings() {
     window.api.updateSetting('wakeWord', el.settingWake.checked)
   })
 
+  el.settingVolume.addEventListener('input', () => {
+    const vol = parseInt(el.settingVolume.value, 10) / 100
+    S.volume = vol
+    el.volumeValue.textContent = Math.round(vol * 100) + '%'
+    window.api.updateSetting('volume', vol)
+  })
+
   // Action buttons
   el.settingsAvatarBtn.addEventListener('click', (e) => {
     e.stopPropagation()
@@ -1876,7 +1890,8 @@ function playNotificationSound() {
     osc.frequency.setValueAtTime(880, ctx.currentTime)
     osc.frequency.setValueAtTime(1320, ctx.currentTime + 0.08)
     osc.frequency.setValueAtTime(880, ctx.currentTime + 0.16)
-    gain.gain.setValueAtTime(0.2, ctx.currentTime)
+    const vol = S.volume != null ? S.volume : 0.8
+    gain.gain.setValueAtTime(0.2 * vol, ctx.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35)
     osc.start(ctx.currentTime)
     osc.stop(ctx.currentTime + 0.35)
@@ -1896,7 +1911,8 @@ function playCompletionSound() {
     osc.frequency.setValueAtTime(659, ctx.currentTime + 0.1) // E5
     osc.frequency.setValueAtTime(784, ctx.currentTime + 0.2) // G5
     osc.frequency.setValueAtTime(1047, ctx.currentTime + 0.3) // C6
-    gain.gain.setValueAtTime(0.2, ctx.currentTime)
+    const vol = S.volume != null ? S.volume : 0.8
+    gain.gain.setValueAtTime(0.2 * vol, ctx.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5)
     osc.start(ctx.currentTime)
     osc.stop(ctx.currentTime + 0.5)

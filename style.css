@@ -329,6 +329,45 @@ html, body {
 .toggle input:checked + .toggle-slider { background: rgba(34,211,238,0.3); }
 .toggle input:checked + .toggle-slider::before { transform: translateX(14px); background: #22d3ee; }
 
+/* Volume slider */
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.volume-slider {
+  -webkit-appearance: none;
+  width: 90px;
+  height: 4px;
+  background: #2a2d3e;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #22d3ee;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+  background: #67e8f9;
+}
+
+.volume-value {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 9px;
+  color: #6b7280;
+  min-width: 28px;
+  text-align: right;
+}
+
 .settings-buttons {
   display: flex;
   flex-direction: column;

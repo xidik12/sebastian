@@ -23,7 +23,7 @@ function loadSettings() {
   try {
     if (fs.existsSync(SETTINGS_FILE)) return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'))
   } catch {}
-  return { sound: true, voice: false, lockPosition: false, wakeWord: false }
+  return { sound: true, voice: false, lockPosition: false, wakeWord: false, volume: 0.8 }
 }
 
 function saveSettings(s) {
@@ -65,17 +65,25 @@ function nativeSay(text) {
     try { sayProc.kill() } catch {}
     sayProc = null
   }
-  const args = []
+  const { spawn } = require('child_process')
+  const vol = settings.volume != null ? settings.volume : 0.8
+  const tmpFile = path.join(os.tmpdir(), 'sebastian-speech.aiff')
+  const args = ['-o', tmpFile]
   if (ttsVoiceName) args.push('-v', ttsVoiceName)
   args.push('-r', String(ttsRate))
   args.push(text)
-  const { spawn } = require('child_process')
+  // Render to file, then play with volume control via afplay
   sayProc = spawn('say', args, { stdio: 'ignore' })
-  // Notify renderer to animate mouth
-  broadcastToMain('speech-start', text)
-  sayProc.on('close', () => {
-    sayProc = null
-    broadcastToMain('speech-end', null)
+  sayProc.on('close', (code) => {
+    if (code !== 0) { sayProc = null; return }
+    const playProc = spawn('afplay', ['-v', String(vol), tmpFile], { stdio: 'ignore' })
+    sayProc = playProc
+    broadcastToMain('speech-start', text)
+    playProc.on('close', () => {
+      sayProc = null
+      broadcastToMain('speech-end', null)
+    })
+    playProc.on('error', () => { sayProc = null })
   })
   sayProc.on('error', () => { sayProc = null })
 }
