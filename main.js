@@ -41,6 +41,8 @@ let voiceEnabled = settings.voice === true
 let ttsVoiceName = 'Daniel'  // British gentleman voice
 let ttsRate = 160            // slightly slower for deeper feel
 let sayProc = null
+const speechQueue = []
+let isSpeaking = false
 
 function initTTSFromAvatar() {
   try {
@@ -60,14 +62,24 @@ initTTSFromAvatar()
 function nativeSay(text) {
   if (!voiceEnabled) return
   if (!text) return
-  // Kill any ongoing speech
-  if (sayProc) {
-    try { sayProc.kill() } catch {}
-    sayProc = null
+  // Queue speech — only one plays at a time, no overlap
+  // Cap queue at 3 to avoid long backlog from rapid-fire requests
+  if (speechQueue.length >= 3) speechQueue.shift()
+  speechQueue.push(text)
+  if (!isSpeaking) processNextSpeech()
+}
+
+function processNextSpeech() {
+  if (speechQueue.length === 0) {
+    isSpeaking = false
+    return
   }
+  isSpeaking = true
+  const text = speechQueue.shift()
   const { spawn } = require('child_process')
   const vol = settings.volume != null ? settings.volume : 0.8
-  const tmpFile = path.join(os.tmpdir(), 'sebastian-speech.aiff')
+  // Use unique tmp file per utterance to avoid file contention
+  const tmpFile = path.join(os.tmpdir(), `sebastian-speech-${Date.now()}.aiff`)
   const args = ['-o', tmpFile]
   if (ttsVoiceName) args.push('-v', ttsVoiceName)
   args.push('-r', String(ttsRate))
@@ -75,17 +87,30 @@ function nativeSay(text) {
   // Render to file, then play with volume control via afplay
   sayProc = spawn('say', args, { stdio: 'ignore' })
   sayProc.on('close', (code) => {
-    if (code !== 0) { sayProc = null; return }
+    if (code !== 0) { sayProc = null; processNextSpeech(); return }
     const playProc = spawn('afplay', ['-v', String(vol), tmpFile], { stdio: 'ignore' })
     sayProc = playProc
     broadcastToMain('speech-start', text)
     playProc.on('close', () => {
       sayProc = null
+      // Clean up temp file
+      try { fs.unlinkSync(tmpFile) } catch {}
       broadcastToMain('speech-end', null)
+      processNextSpeech()
     })
-    playProc.on('error', () => { sayProc = null })
+    playProc.on('error', () => { sayProc = null; processNextSpeech() })
   })
-  sayProc.on('error', () => { sayProc = null })
+  sayProc.on('error', () => { sayProc = null; processNextSpeech() })
+}
+
+function stopAllSpeech() {
+  speechQueue.length = 0
+  if (sayProc) {
+    try { sayProc.kill() } catch {}
+    sayProc = null
+  }
+  isSpeaking = false
+  broadcastToMain('speech-end', null)
 }
 
 // ── Session Management ────────────────────────────────────────────────────────
