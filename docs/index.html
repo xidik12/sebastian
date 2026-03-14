@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sebastian — The AI Butler That Lives On Your Desktop</title>
+  <meta name="description" content="Sebastian is a desktop AI companion that turns Claude Code into a living workspace. 116 emotions, smart approvals, voice control, and a personality engine with dry British wit.">
+  <meta name="keywords" content="Claude Code, AI assistant, desktop companion, macOS, Electron, developer tools, AI butler">
+  <meta name="author" content="Salakhitdinov Khidayotullo">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://xidik12.github.io/sebastian/">
+  <meta property="og:title" content="Sebastian — The AI Butler That Lives On Your Desktop">
+  <meta property="og:description" content="A desktop AI companion that turns Claude Code into a living workspace. 116 emotions, smart approvals, British wit.">
+  <meta property="og:image" content="https://raw.githubusercontent.com/xidik12/sebastian/main/screenshots/sebastian-hero.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Sebastian — The AI Butler That Lives On Your Desktop">
+  <meta name="twitter:description" content="A desktop AI companion that turns Claude Code into a living workspace. 116 emotions, smart approvals, British wit.">
+  <meta name="twitter:image" content="https://raw.githubusercontent.com/xidik12/sebastian/main/screenshots/sebastian-hero.png">
+
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎩</text></svg>">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <style>
+    /* ========== RESET & BASE ========== */
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --cyan: #22d3ee;
+      --cyan-dim: #0e7490;
+      --cyan-glow: rgba(34, 211, 238, 0.15);
+      --cyan-glow-strong: rgba(34, 211, 238, 0.3);
+      --bg-primary: #050a10;
+      --bg-secondary: #0a1020;
+      --bg-card: #0d1525;
+      --bg-card-hover: #111d35;
+      --border: rgba(34, 211, 238, 0.08);
+      --border-hover: rgba(34, 211, 238, 0.2);
+      --text-primary: #f0f4f8;
+      --text-secondary: #8b9ab5;
+      --text-dim: #5a6a80;
+      --purple: #a855f7;
+      --green: #10b981;
+      --orange: #f97316;
+      --red: #ef4444;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ========== ANIMATED BACKGROUND ========== */
+    .bg-gradient {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .bg-gradient::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background:
+        radial-gradient(ellipse 600px 600px at 20% 20%, rgba(34, 211, 238, 0.06) 0%, transparent 70%),
+        radial-gradient(ellipse 500px 500px at 80% 10%, rgba(168, 85, 247, 0.04) 0%, transparent 70%),
+        radial-gradient(ellipse 400px 400px at 50% 80%, rgba(34, 211, 238, 0.03) 0%, transparent 70%);
+      animation: bgDrift 20s ease-in-out infinite alternate;
+    }
+
+    .bg-gradient::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background:
+        radial-gradient(circle 1px at 15% 25%, rgba(34, 211, 238, 0.3) 0%, transparent 100%),
+        radial-gradient(circle 1px at 85% 15%, rgba(168, 85, 247, 0.25) 0%, transparent 100%),
+        radial-gradient(circle 1px at 45% 60%, rgba(34, 211, 238, 0.2) 0%, transparent 100%),
+        radial-gradient(circle 1px at 70% 75%, rgba(168, 85, 247, 0.2) 0%, transparent 100%),
+        radial-gradient(circle 1px at 25% 85%, rgba(34, 211, 238, 0.15) 0%, transparent 100%),
+        radial-gradient(circle 1px at 90% 50%, rgba(16, 185, 129, 0.15) 0%, transparent 100%);
+      animation: starsTwinkle 8s ease-in-out infinite alternate;
+    }
+
+    @keyframes bgDrift {
+      0% { transform: translate(0, 0) rotate(0deg); }
+      100% { transform: translate(30px, -20px) rotate(2deg); }
+    }
+
+    @keyframes starsTwinkle {
+      0% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+
+    /* Grid pattern overlay */
+    .grid-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(34, 211, 238, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(34, 211, 238, 0.015) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black, transparent);
+    }
+
+    /* ========== LAYOUT ========== */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    section {
+      padding: 100px 0;
+    }
+
+    /* ========== NAV ========== */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 16px 0;
+      background: rgba(5, 10, 16, 0.8);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      transition: all 0.3s;
+    }
+
+    nav .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+
+    .nav-brand-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--cyan), var(--purple));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    .nav-brand span {
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--cyan);
+    }
+
+    .nav-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 20px;
+      background: rgba(34, 211, 238, 0.1);
+      border: 1px solid rgba(34, 211, 238, 0.2);
+      border-radius: 8px;
+      color: var(--cyan) !important;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .nav-cta:hover {
+      background: rgba(34, 211, 238, 0.15);
+      border-color: rgba(34, 211, 238, 0.4);
+      transform: translateY(-1px);
+    }
+
+    .nav-mobile-toggle {
+      display: none;
+      background: none;
+      border: none;
+      color: var(--text-primary);
+      font-size: 24px;
+      cursor: pointer;
+    }
+
+    /* ========== HERO ========== */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding-top: 80px;
+      position: relative;
+    }
+
+    .hero-content {
+      max-width: 800px;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: rgba(34, 211, 238, 0.08);
+      border: 1px solid rgba(34, 211, 238, 0.15);
+      border-radius: 100px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--cyan);
+      margin-bottom: 32px;
+      animation: fadeInUp 0.6s ease-out;
+    }
+
+    .hero-badge-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--cyan);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    .hero h1 {
+      font-size: clamp(48px, 7vw, 80px);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.05;
+      margin-bottom: 24px;
+      animation: fadeInUp 0.6s ease-out 0.1s both;
+    }
+
+    .hero h1 .gradient-text {
+      background: linear-gradient(135deg, var(--cyan) 0%, var(--purple) 50%, var(--cyan) 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 3s linear infinite;
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 0% center; }
+      100% { background-position: 200% center; }
+    }
+
+    .hero p {
+      font-size: 18px;
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin: 0 auto 40px;
+      line-height: 1.7;
+      animation: fadeInUp 0.6s ease-out 0.2s both;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      animation: fadeInUp 0.6s ease-out 0.3s both;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 28px;
+      background: linear-gradient(135deg, var(--cyan), #06b6d4);
+      color: var(--bg-primary);
+      font-size: 15px;
+      font-weight: 700;
+      border-radius: 12px;
+      text-decoration: none;
+      transition: all 0.3s;
+      box-shadow: 0 0 30px rgba(34, 211, 238, 0.2);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 50px rgba(34, 211, 238, 0.35);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 28px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-hover);
+      color: var(--text-primary);
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 12px;
+      text-decoration: none;
+      transition: all 0.3s;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(34, 211, 238, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .hero-quote {
+      margin-top: 60px;
+      font-style: italic;
+      color: var(--text-dim);
+      font-size: 16px;
+      animation: fadeInUp 0.6s ease-out 0.5s both;
+    }
+
+    .hero-quote span {
+      color: var(--cyan);
+    }
+
+    /* Glow line separator */
+    .glow-line {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent 0%, var(--cyan-dim) 50%, transparent 100%);
+      opacity: 0.3;
+    }
+
+    /* ========== SECTION HEADER ========== */
+    .section-header {
+      text-align: center;
+      margin-bottom: 64px;
+    }
+
+    .section-label {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      margin-bottom: 16px;
+    }
+
+    .section-header h2 {
+      font-size: clamp(32px, 4vw, 48px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 16px;
+    }
+
+    .section-header p {
+      font-size: 17px;
+      color: var(--text-secondary);
+      max-width: 560px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    /* ========== FEATURE GRID ========== */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--cyan-dim), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .feature-card:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-hover);
+      transform: translateY(-4px);
+    }
+
+    .feature-card:hover::before {
+      opacity: 1;
+    }
+
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      margin-bottom: 20px;
+    }
+
+    .feature-icon.cyan { background: rgba(34, 211, 238, 0.1); }
+    .feature-icon.purple { background: rgba(168, 85, 247, 0.1); }
+    .feature-icon.green { background: rgba(16, 185, 129, 0.1); }
+    .feature-icon.orange { background: rgba(249, 115, 22, 0.1); }
+    .feature-icon.red { background: rgba(239, 68, 68, 0.1); }
+    .feature-icon.blue { background: rgba(59, 130, 246, 0.1); }
+
+    .feature-card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -0.01em;
+    }
+
+    .feature-card p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.65;
+    }
+
+    .feature-tag {
+      display: inline-block;
+      margin-top: 16px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 6px;
+      letter-spacing: 0.02em;
+    }
+
+    .feature-tag.cyan { background: rgba(34, 211, 238, 0.1); color: var(--cyan); }
+    .feature-tag.purple { background: rgba(168, 85, 247, 0.1); color: var(--purple); }
+    .feature-tag.green { background: rgba(16, 185, 129, 0.1); color: var(--green); }
+
+    /* ========== HOW IT WORKS ========== */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+      position: relative;
+    }
+
+    .steps::before {
+      content: '';
+      position: absolute;
+      top: 48px;
+      left: 16.66%;
+      right: 16.66%;
+      height: 2px;
+      background: linear-gradient(90deg, var(--cyan-dim), var(--purple), var(--cyan-dim));
+      opacity: 0.3;
+    }
+
+    .step {
+      text-align: center;
+      position: relative;
+    }
+
+    .step-number {
+      width: 96px;
+      height: 96px;
+      margin: 0 auto 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      font-weight: 800;
+      position: relative;
+      z-index: 1;
+    }
+
+    .step:nth-child(1) .step-number {
+      background: linear-gradient(135deg, rgba(34, 211, 238, 0.1), rgba(34, 211, 238, 0.03));
+      border: 2px solid rgba(34, 211, 238, 0.2);
+      color: var(--cyan);
+    }
+
+    .step:nth-child(2) .step-number {
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(168, 85, 247, 0.03));
+      border: 2px solid rgba(168, 85, 247, 0.2);
+      color: var(--purple);
+    }
+
+    .step:nth-child(3) .step-number {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.03));
+      border: 2px solid rgba(16, 185, 129, 0.2);
+      color: var(--green);
+    }
+
+    .step h3 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -0.01em;
+    }
+
+    .step p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.65;
+      max-width: 280px;
+      margin: 0 auto;
+    }
+
+    .step code {
+      display: inline-block;
+      margin-top: 16px;
+      padding: 8px 16px;
+      background: rgba(34, 211, 238, 0.06);
+      border: 1px solid rgba(34, 211, 238, 0.12);
+      border-radius: 8px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      color: var(--cyan);
+    }
+
+    /* ========== PERSONALITY TABLE ========== */
+    .personality-section {
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .personality-table-wrapper {
+      overflow-x: auto;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+    }
+
+    .personality-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    .personality-table thead {
+      background: rgba(34, 211, 238, 0.05);
+    }
+
+    .personality-table th {
+      padding: 16px 24px;
+      text-align: left;
+      font-weight: 700;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--cyan);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .personality-table td {
+      padding: 16px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      vertical-align: middle;
+    }
+
+    .personality-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .personality-table tbody tr {
+      transition: background 0.2s;
+    }
+
+    .personality-table tbody tr:hover {
+      background: rgba(34, 211, 238, 0.03);
+    }
+
+    .personality-table .event {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .personality-table .emotion-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .emotion-badge.happy { background: rgba(16, 185, 129, 0.1); color: var(--green); }
+    .emotion-badge.alert { background: rgba(249, 115, 22, 0.1); color: var(--orange); }
+    .emotion-badge.proud { background: rgba(168, 85, 247, 0.1); color: var(--purple); }
+    .emotion-badge.nervous { background: rgba(239, 68, 68, 0.1); color: var(--red); }
+    .emotion-badge.thinking { background: rgba(34, 211, 238, 0.1); color: var(--cyan); }
+    .emotion-badge.excited { background: rgba(34, 211, 238, 0.1); color: var(--cyan); }
+
+    .personality-table .quote {
+      font-style: italic;
+      color: var(--text-secondary);
+    }
+
+    /* ========== ARCHITECTURE ========== */
+    .architecture-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+
+    .arch-diagram {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      line-height: 1.8;
+      color: var(--text-secondary);
+      overflow-x: auto;
+    }
+
+    .arch-diagram .file {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .arch-diagram .comment {
+      color: var(--text-dim);
+    }
+
+    .arch-diagram .folder {
+      color: var(--cyan);
+      font-weight: 600;
+    }
+
+    .arch-api {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .api-endpoint {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+
+    .api-endpoint:hover {
+      border-color: var(--border-hover);
+      transform: translateX(4px);
+    }
+
+    .api-method {
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      flex-shrink: 0;
+    }
+
+    .api-method.post { background: rgba(168, 85, 247, 0.15); color: var(--purple); }
+    .api-method.get { background: rgba(16, 185, 129, 0.15); color: var(--green); }
+
+    .api-path {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .api-desc {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-left: auto;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* ========== FINAL CTA ========== */
+    .final-cta {
+      text-align: center;
+      position: relative;
+    }
+
+    .final-cta-glow {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(34, 211, 238, 0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .final-cta h2 {
+      font-size: clamp(36px, 5vw, 56px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 16px;
+      position: relative;
+    }
+
+    .final-cta > p {
+      font-size: 18px;
+      color: var(--text-secondary);
+      margin-bottom: 40px;
+      position: relative;
+    }
+
+    .cta-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 48px;
+      position: relative;
+    }
+
+    .install-block {
+      max-width: 640px;
+      margin: 0 auto;
+      text-align: left;
+      position: relative;
+    }
+
+    .install-block h4 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    .code-block {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .code-block-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .code-block-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .code-block-dots span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .code-block-dots span:nth-child(1) { background: #ef4444; }
+    .code-block-dots span:nth-child(2) { background: #f59e0b; }
+    .code-block-dots span:nth-child(3) { background: #22c55e; }
+
+    .code-block pre {
+      padding: 20px;
+      overflow-x: auto;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--text-secondary);
+    }
+
+    .code-block pre .cmd {
+      color: var(--cyan);
+    }
+
+    .code-block pre .comment {
+      color: var(--text-dim);
+    }
+
+    /* ========== FOOTER ========== */
+    footer {
+      padding: 40px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .footer-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--text-dim);
+    }
+
+    .footer-left a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .footer-left a:hover {
+      color: var(--cyan);
+    }
+
+    .footer-right {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .footer-right a {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 13px;
+      transition: color 0.2s;
+    }
+
+    .footer-right a:hover {
+      color: var(--cyan);
+    }
+
+    /* ========== ANIMATIONS ========== */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(24px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Staggered delays for grid children */
+    .reveal-stagger > *:nth-child(1) { transition-delay: 0s; }
+    .reveal-stagger > *:nth-child(2) { transition-delay: 0.08s; }
+    .reveal-stagger > *:nth-child(3) { transition-delay: 0.16s; }
+    .reveal-stagger > *:nth-child(4) { transition-delay: 0.24s; }
+    .reveal-stagger > *:nth-child(5) { transition-delay: 0.32s; }
+    .reveal-stagger > *:nth-child(6) { transition-delay: 0.40s; }
+
+    .reveal-stagger > * {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+
+    .reveal-stagger.visible > * {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ========== RESPONSIVE ========== */
+    @media (max-width: 1024px) {
+      .feature-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .architecture-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 768px) {
+      section {
+        padding: 64px 0;
+      }
+
+      .nav-links {
+        display: none;
+      }
+
+      .nav-links.open {
+        display: flex;
+        flex-direction: column;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: rgba(5, 10, 16, 0.95);
+        backdrop-filter: blur(20px);
+        padding: 24px;
+        border-bottom: 1px solid var(--border);
+        gap: 20px;
+      }
+
+      .nav-mobile-toggle {
+        display: block;
+      }
+
+      .feature-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .steps {
+        grid-template-columns: 1fr;
+        gap: 48px;
+      }
+
+      .steps::before {
+        display: none;
+      }
+
+      .hero h1 {
+        font-size: clamp(36px, 8vw, 56px);
+      }
+
+      .hero-actions {
+        flex-direction: column;
+      }
+
+      .btn-primary, .btn-secondary {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .personality-table th,
+      .personality-table td {
+        padding: 12px 14px;
+      }
+
+      .api-desc {
+        display: none;
+      }
+
+      .footer-content {
+        flex-direction: column;
+        text-align: center;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .container {
+        padding: 0 16px;
+      }
+
+      .feature-card {
+        padding: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Background Effects -->
+  <div class="bg-gradient"></div>
+  <div class="grid-overlay"></div>
+
+  <!-- Navigation -->
+  <nav>
+    <div class="container">
+      <a href="#" class="nav-brand">
+        <div class="nav-brand-icon">S</div>
+        <span>Sebastian</span>
+      </a>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#how-it-works">How It Works</a></li>
+        <li><a href="#personality">Personality</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="https://github.com/xidik12/sebastian" class="nav-cta" target="_blank" rel="noopener">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a></li>
+      </ul>
+      <button class="nav-mobile-toggle" id="mobileToggle" aria-label="Toggle menu">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero" id="hero">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="hero-badge-dot"></span>
+        v2.0 &mdash; Now with 116 emotions
+      </div>
+      <h1>
+        The AI Butler<br>
+        <span class="gradient-text">On Your Desktop</span>
+      </h1>
+      <p>
+        Sebastian turns Claude Code from a CLI tool into a living workspace.
+        He watches your sessions, approves tool calls with butler-like grace,
+        and reacts to your work with dry British wit.
+      </p>
+      <div class="hero-actions">
+        <a href="https://github.com/xidik12/sebastian" class="btn-primary" target="_blank" rel="noopener">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          View on GitHub
+        </a>
+        <a href="#how-it-works" class="btn-secondary">
+          How It Works
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 13l5 5 5-5M7 6l5 5 5-5"/></svg>
+        </a>
+      </div>
+      <p class="hero-quote">
+        <span>&ldquo;</span>At your service, sir.<span>&rdquo;</span>
+      </p>
+    </div>
+  </section>
+
+  <div class="glow-line"></div>
+
+  <!-- Features Section -->
+  <section id="features">
+    <div class="container">
+      <div class="section-header reveal">
+        <span class="section-label">Features</span>
+        <h2>Everything a butler should do</h2>
+        <p>Built for developers who want Claude Code to feel like a living teammate, not just a terminal.</p>
+      </div>
+      <div class="feature-grid reveal-stagger reveal">
+        <div class="feature-card">
+          <div class="feature-icon cyan">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          </div>
+          <h3>116 Emotions</h3>
+          <p>Unique iris colors, body animations, eyebrow positions, mouth shapes, and SVG particle effects for every mood.</p>
+          <span class="feature-tag cyan">Happy, Proud, Debugging, Facepalm...</span>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon purple">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+          </div>
+          <h3>Smart Approvals</h3>
+          <p>Auto-approve safe commands, learn from your patterns, flag critical operations. Three-layer approval intelligence.</p>
+          <span class="feature-tag purple">Auto-learn after 20+ approvals</span>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon green">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </div>
+          <h3>Voice &amp; Wake Word</h3>
+          <p>Native macOS TTS with a British gentleman's voice. Say "Sebastian" and he activates. Zero cloud dependencies.</p>
+          <span class="feature-tag green">On-device Speech Recognition</span>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon orange">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
+          <h3>Session Management</h3>
+          <p>Auto-discovers Claude Code sessions. Color-coded. Send messages directly. Multi-session monitoring and approval.</p>
+          <span class="feature-tag cyan">Zero configuration</span>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon blue">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+          </div>
+          <h3>Ghost OS Integration</h3>
+          <p>Pair with Ghost OS for full desktop autonomy. Sebastian handles code, Ghost OS handles any native macOS app.</p>
+          <span class="feature-tag purple">Full desktop control</span>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon red">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><line x1="16" y1="8" x2="2" y2="22"/><line x1="17.5" y1="15" x2="9" y2="15"/></svg>
+          </div>
+          <h3>Avatar Editor</h3>
+          <p>Built-in visual editor with swappable SVG parts. Create entirely new personas. Per-avatar voice customization.</p>
+          <span class="feature-tag green">Fully customizable</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="glow-line"></div>
+
+  <!-- How It Works -->
+  <section id="how-it-works">
+    <div class="container">
+      <div class="section-header reveal">
+        <span class="section-label">Setup</span>
+        <h2>Up and running in 60 seconds</h2>
+        <p>Three steps from clone to butler. No cloud accounts, no API keys, no subscriptions.</p>
+      </div>
+      <div class="steps reveal-stagger reveal">
+        <div class="step">
+          <div class="step-number">1</div>
+          <h3>Install</h3>
+          <p>Clone the repo, install dependencies, and build the macOS app.</p>
+          <code>npm install && npm run build</code>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <h3>Connect Claude Code</h3>
+          <p>Add Sebastian's HTTP hooks to your Claude Code settings. One-time setup.</p>
+          <code>~/.claude/settings.json</code>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <h3>Start Coding</h3>
+          <p>Launch any Claude Code session. Sebastian auto-detects it and starts working.</p>
+          <code>claude "build something great"</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="glow-line"></div>
+
+  <!-- Personality Engine -->
+  <section class="personality-section" id="personality">
+    <div class="container">
+      <div class="section-header reveal">
+        <span class="section-label">Personality Engine</span>
+        <h2>He doesn't just notify. He <em>reacts</em>.</h2>
+        <p>Dynamic responses with 4-10 alternatives per situation. Time-aware, mood-driven, never repetitive.</p>
+      </div>
+      <div class="personality-table-wrapper reveal">
+        <table class="personality-table">
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th>Emotion</th>
+              <th>Sebastian says...</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="event">Session connects</td>
+              <td><span class="emotion-badge happy">happy</span></td>
+              <td class="quote">"Good evening, sir. A session is ready for you."</td>
+            </tr>
+            <tr>
+              <td class="event">Tests pass</td>
+              <td><span class="emotion-badge proud">proud</span></td>
+              <td class="quote">"Excellent news, sir!"</td>
+            </tr>
+            <tr>
+              <td class="event">3 errors in a row</td>
+              <td><span class="emotion-badge nervous">nervous</span></td>
+              <td class="quote">"A pattern of errors, sir. Shall we reconsider the approach?"</td>
+            </tr>
+            <tr>
+              <td class="event">Build succeeds</td>
+              <td><span class="emotion-badge excited">excited</span></td>
+              <td class="quote">"All set, sir! Ship it."</td>
+            </tr>
+            <tr>
+              <td class="event">2 hours of coding</td>
+              <td><span class="emotion-badge thinking">concerned</span></td>
+              <td class="quote">"Sir, you've been at it for two hours. Perhaps stretch your legs?"</td>
+            </tr>
+            <tr>
+              <td class="event">Critical command detected</td>
+              <td><span class="emotion-badge alert">alert</span></td>
+              <td class="quote">"Sir, this requires your explicit blessing."</td>
+            </tr>
+            <tr>
+              <td class="event">Working on weekend</td>
+              <td><span class="emotion-badge thinking">impressed</span></td>
+              <td class="quote">"Working on a Saturday, sir? Dedication."</td>
+            </tr>
+            <tr>
+              <td class="event">Idle for a while</td>
+              <td><span class="emotion-badge thinking">philosophical</span></td>
+              <td class="quote">"I sometimes wonder if code dreams of electric sheep, sir."</td>
+            </tr>
+            <tr>
+              <td class="event">Auto-approve milestone</td>
+              <td><span class="emotion-badge happy">grateful</span></td>
+              <td class="quote">"Fifty auto-approvals. We make a fine team, sir."</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <div class="glow-line"></div>
+
+  <!-- Architecture -->
+  <section id="architecture">
+    <div class="container">
+      <div class="section-header reveal">
+        <span class="section-label">Under the Hood</span>
+        <h2>Architecture</h2>
+        <p>Electron + native Swift. HTTP hook server on port 19700. Zero cloud dependencies.</p>
+      </div>
+      <div class="architecture-grid reveal">
+        <div class="arch-diagram">
+          <span class="folder">Sebastian</span> <span class="comment">(Electron + Native Swift)</span><br>
+          ├── <span class="file">main.js</span> <span class="comment">&mdash; HTTP hook server, personality, approvals</span><br>
+          ├── <span class="file">app.js</span> <span class="comment">&mdash; Character animation, emotion system</span><br>
+          ├── <span class="file">preload.js</span> <span class="comment">&mdash; Secure IPC bridge</span><br>
+          ├── <span class="file">index.html</span> <span class="comment">&mdash; SVG character + UI shell</span><br>
+          ├── <span class="file">style.css</span> <span class="comment">&mdash; Animations, effects, dark UI</span><br>
+          ├── <span class="file">avatar-parts.js</span> <span class="comment">&mdash; Avatar customization system</span><br>
+          ├── <span class="file">avatar-editor.*</span> <span class="comment">&mdash; Visual avatar editor</span><br>
+          ├── <span class="file">panel.*</span> <span class="comment">&mdash; Session history panel</span><br>
+          ├── <span class="file">speech-helper.swift</span> <span class="comment">&mdash; Native macOS TTS</span><br>
+          ├── <span class="file">wake-word.swift</span> <span class="comment">&mdash; On-device wake word detection</span><br>
+          └── <span class="folder">mobile/</span> <span class="comment">&mdash; PWA remote control (beta)</span>
+        </div>
+        <div class="arch-api">
+          <div class="api-endpoint">
+            <span class="api-method post">POST</span>
+            <span class="api-path">/hooks/session-start</span>
+            <span class="api-desc">Session connected</span>
+          </div>
+          <div class="api-endpoint">
+            <span class="api-method post">POST</span>
+            <span class="api-path">/hooks/pre-tool-use</span>
+            <span class="api-desc">Approval request</span>
+          </div>
+          <div class="api-endpoint">
+            <span class="api-method post">POST</span>
+            <span class="api-path">/hooks/post-tool-use</span>
+            <span class="api-desc">Execution complete</span>
+          </div>
+          <div class="api-endpoint">
+            <span class="api-method post">POST</span>
+            <span class="api-path">/hooks/stop</span>
+            <span class="api-desc">Session ended</span>
+          </div>
+          <div class="api-endpoint">
+            <span class="api-method post">POST</span>
+            <span class="api-path">/hooks/notification</span>
+            <span class="api-desc">Notification relay</span>
+          </div>
+          <div class="api-endpoint">
+            <span class="api-method post">POST</span>
+            <span class="api-path">/emotion</span>
+            <span class="api-desc">Set emotion externally</span>
+          </div>
+          <div class="api-endpoint">
+            <span class="api-method get">GET</span>
+            <span class="api-path">/health</span>
+            <span class="api-desc">Health check</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="glow-line"></div>
+
+  <!-- Final CTA -->
+  <section class="final-cta" id="get-started">
+    <div class="container">
+      <div class="final-cta-glow"></div>
+      <h2 class="reveal">Ready to meet<br><span class="gradient-text">your butler?</span></h2>
+      <p class="reveal">Open source. MIT licensed. Built for developers who code with Claude.</p>
+      <div class="cta-actions reveal">
+        <a href="https://github.com/xidik12/sebastian" class="btn-primary" target="_blank" rel="noopener">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          Star on GitHub
+        </a>
+        <a href="https://github.com/xidik12/sebastian/releases" class="btn-secondary" target="_blank" rel="noopener">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download
+        </a>
+      </div>
+      <div class="install-block reveal">
+        <h4>Quick install</h4>
+        <div class="code-block">
+          <div class="code-block-header">
+            <div class="code-block-dots">
+              <span></span><span></span><span></span>
+            </div>
+            Terminal
+          </div>
+          <pre><span class="comment"># Clone and build</span>
+<span class="cmd">git clone</span> https://github.com/xidik12/sebastian.git
+<span class="cmd">cd</span> sebastian
+<span class="cmd">npm install</span>
+<span class="cmd">npm run build</span>
+
+<span class="comment"># Install the app</span>
+<span class="cmd">cp -R</span> dist/mac-arm64/Sebastian.app /Applications/
+<span class="cmd">open</span> /Applications/Sebastian.app</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-left">
+          MIT License &middot; Built by <a href="https://github.com/xidik12" target="_blank" rel="noopener">Salakhitdinov Khidayotullo</a>
+        </div>
+        <div class="footer-right">
+          <a href="https://github.com/xidik12/sebastian" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://www.anthropic.com" target="_blank" rel="noopener">Powered by Claude</a>
+          <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener">Model Context Protocol</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Minimal JS: Scroll reveal + Mobile nav -->
+  <script>
+    // Intersection Observer for reveal animations
+    (function() {
+      var targets = document.querySelectorAll('.reveal, .reveal-stagger');
+      if ('IntersectionObserver' in window) {
+        var observer = new IntersectionObserver(function(entries) {
+          entries.forEach(function(entry) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('visible');
+            }
+          });
+        }, {
+          threshold: 0.1,
+          rootMargin: '0px 0px -40px 0px'
+        });
+        targets.forEach(function(t) { observer.observe(t); });
+      } else {
+        // Fallback: show all
+        targets.forEach(function(t) { t.classList.add('visible'); });
+      }
+
+      // Mobile nav toggle
+      var toggle = document.getElementById('mobileToggle');
+      var links = document.getElementById('navLinks');
+      if (toggle && links) {
+        toggle.addEventListener('click', function() {
+          links.classList.toggle('open');
+        });
+        // Close on link click
+        links.querySelectorAll('a').forEach(function(a) {
+          a.addEventListener('click', function() {
+            links.classList.remove('open');
+          });
+        });
+      }
+
+      // Nav background on scroll
+      var nav = document.querySelector('nav');
+      window.addEventListener('scroll', function() {
+        if (window.scrollY > 50) {
+          nav.style.borderBottomColor = 'rgba(34, 211, 238, 0.1)';
+        } else {
+          nav.style.borderBottomColor = 'rgba(34, 211, 238, 0.04)';
+        }
+      }, { passive: true });
+    })();
+  </script>
+</body>
+</html>
