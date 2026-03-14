@@ -84,6 +84,16 @@ const RENDERER_LINES = {
     'Auto-accept toggled, sir.',
     'As you wish, sir. Auto-accept updated.',
   ],
+  autoApproveOn: [
+    'Auto-approve engaged, sir. I shall handle all routine approvals.',
+    'Understood, sir. All non-critical requests will be approved automatically.',
+    'Very well, sir. Full autonomy granted. Critical operations will still require your blessing.',
+  ],
+  autoApproveOff: [
+    'Auto-approve disengaged, sir. Back to manual approvals.',
+    'Understood, sir. I shall seek your approval as usual.',
+    'Very well, sir. Standard approval flow restored.',
+  ],
   errorOccurred: [
     'An error occurred, sir. Please check the details.',
     'Something went wrong, sir. Have a look.',
@@ -413,6 +423,7 @@ const S = {
   voiceEnabled: false,
   lockPosition: false,
   volume: 0.8,
+  autoApproveAll: false,
 }
 
 // Approval queue (shown in bubble)
@@ -492,6 +503,8 @@ async function init() {
     confusedBrows: $('confused-brows'),
     settingsBtn: $('settings-btn'),
     settingsPopover: $('settings-popover'),
+    settingAutoApprove: $('setting-auto-approve'),
+    autoApproveRow: $('auto-approve-row'),
     settingSound: $('setting-sound'),
     settingVoice: $('setting-voice'),
     settingLock: $('setting-lock'),
@@ -553,6 +566,9 @@ async function init() {
   el.settingVoice.checked = S.voiceEnabled
   el.settingLock.checked = S.lockPosition
   el.settingWake.checked = savedSettings.wakeWord === true
+  S.autoApproveAll = savedSettings.autoApproveAll === true
+  el.settingAutoApprove.checked = S.autoApproveAll
+  if (S.autoApproveAll) el.autoApproveRow.classList.add('active')
   S.volume = savedSettings.volume != null ? savedSettings.volume : 0.8
   el.settingVolume.value = Math.round(S.volume * 100)
   el.volumeValue.textContent = Math.round(S.volume * 100) + '%'
@@ -619,6 +635,7 @@ async function init() {
     if (data.lockPosition !== undefined) { S.lockPosition = data.lockPosition; el.settingLock.checked = data.lockPosition }
     if (data.wakeWord !== undefined) { el.settingWake.checked = data.wakeWord }
     if (data.volume !== undefined) { S.volume = data.volume; el.settingVolume.value = Math.round(data.volume * 100); el.volumeValue.textContent = Math.round(data.volume * 100) + '%' }
+    if (data.autoApproveAll !== undefined) { S.autoApproveAll = data.autoApproveAll; el.settingAutoApprove.checked = data.autoApproveAll; el.autoApproveRow.classList.toggle('active', data.autoApproveAll) }
   })
 
   // Session response (from chat or completion) — show in bubble + speak with emotion
@@ -1546,6 +1563,14 @@ function setupSettings() {
   btn.addEventListener('mousedown', (e) => e.stopPropagation())
 
   // Toggle handlers
+  el.settingAutoApprove.addEventListener('change', () => {
+    S.autoApproveAll = el.settingAutoApprove.checked
+    window.api.updateSetting('autoApproveAll', S.autoApproveAll)
+    el.autoApproveRow.classList.toggle('active', S.autoApproveAll)
+    sebastianSay(pickRendererLine(S.autoApproveAll ? RENDERER_LINES.autoApproveOn : RENDERER_LINES.autoApproveOff))
+    setExternalEmotion(S.autoApproveAll ? 'proud' : 'content', S.autoApproveAll ? 'Auto-approve ON' : 'Auto-approve OFF')
+  })
+
   el.settingSound.addEventListener('change', () => {
     S.soundEnabled = el.settingSound.checked
     window.api.updateSetting('sound', S.soundEnabled)

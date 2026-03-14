@@ -397,6 +397,21 @@ html, body {
 .toggle input:checked + .toggle-slider { background: rgba(34,211,238,0.3); }
 .toggle input:checked + .toggle-slider::before { transform: translateX(14px); background: #22d3ee; }
 
+/* Auto-approve toggle (amber/warning color) */
+.toggle-warn input:checked + .toggle-slider { background: rgba(251,191,36,0.3); }
+.toggle-warn input:checked + .toggle-slider::before { background: #fbbf24; }
+
+.auto-approve-row { border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px; margin-bottom: 4px; }
+.auto-approve-row.active { background: rgba(251,191,36,0.06); border-radius: 6px; margin: -4px; padding: 4px 4px 10px; }
+
+.settings-desc {
+  display: block;
+  font-size: 10px;
+  opacity: 0.45;
+  font-weight: normal;
+  margin-top: 2px;
+}
+
 .settings-buttons {
   display: flex;
   flex-direction: column;

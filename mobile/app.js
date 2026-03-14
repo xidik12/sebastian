@@ -435,6 +435,7 @@ const S = {
   pendingCount: 0,
   soundEnabled: true,
   voiceEnabled: false,
+  autoApproveAll: false,
 }
 
 // Approval queue (shown in bubble)
@@ -588,6 +589,7 @@ function connectSSE() {
     const data = JSON.parse(e.data)
     if (data.sound !== undefined) { S.soundEnabled = data.sound; el.settingSound.checked = data.sound }
     if (data.voice !== undefined) { S.voiceEnabled = data.voice; el.settingVoice.checked = data.voice }
+    if (data.autoApproveAll !== undefined) { S.autoApproveAll = data.autoApproveAll; el.settingAutoApprove.checked = data.autoApproveAll; el.autoApproveRow.classList.toggle('active', data.autoApproveAll) }
   })
 }
 
@@ -653,6 +655,8 @@ async function init() {
     confusedBrows: $('confused-brows'),
     settingsBtn: $('settings-btn'),
     settingsPopover: $('settings-popover'),
+    settingAutoApprove: $('setting-auto-approve'),
+    autoApproveRow: $('auto-approve-row'),
     settingSound: $('setting-sound'),
     settingVoice: $('setting-voice'),
     connectionStatus: $('connection-status'),
@@ -1442,6 +1446,16 @@ function setupSettings() {
   })
 
   // Toggle handlers
+  el.settingAutoApprove.addEventListener('change', () => {
+    S.autoApproveAll = el.settingAutoApprove.checked
+    el.autoApproveRow.classList.toggle('active', S.autoApproveAll)
+    fetch(apiUrl('/mobile/update-setting'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'autoApproveAll', value: S.autoApproveAll })
+    })
+  })
+
   el.settingSound.addEventListener('change', () => {
     S.soundEnabled = el.settingSound.checked
     fetch(apiUrl('/mobile/update-setting'), {

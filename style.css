@@ -261,8 +261,16 @@ html, body {
   bottom: 48px;
   left: 12px;
   width: 220px;
+  max-height: calc(100vh - 56px);
   z-index: 100;
   animation: popover-in 0.2s ease-out;
+}
+
+#settings-popover .settings-body {
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
 }
 
 .settings-body {
@@ -328,6 +336,21 @@ html, body {
 
 .toggle input:checked + .toggle-slider { background: rgba(34,211,238,0.3); }
 .toggle input:checked + .toggle-slider::before { transform: translateX(14px); background: #22d3ee; }
+
+/* Auto-approve toggle (amber/warning color) */
+.toggle-warn input:checked + .toggle-slider { background: rgba(251,191,36,0.3); }
+.toggle-warn input:checked + .toggle-slider::before { background: #fbbf24; }
+
+.auto-approve-row { border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px; margin-bottom: 4px; }
+.auto-approve-row.active { background: rgba(251,191,36,0.06); border-radius: 4px; margin: -4px; padding: 4px 4px 8px; }
+
+.settings-desc {
+  display: block;
+  font-size: 9px;
+  opacity: 0.45;
+  font-weight: normal;
+  margin-top: 1px;
+}
 
 /* Volume slider */
 .volume-control {
@@ -412,7 +435,7 @@ html, body {
   flex-direction: column;
   gap: 3px;
   padding: 4px 12px 6px;
-  width: 100%;
+  width: 280px;
   margin-top: 2px;
 }
 

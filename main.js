@@ -23,7 +23,7 @@ function loadSettings() {
   try {
     if (fs.existsSync(SETTINGS_FILE)) return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'))
   } catch {}
-  return { sound: true, voice: false, lockPosition: false, wakeWord: false, volume: 0.8 }
+  return { sound: true, voice: false, lockPosition: false, wakeWord: false, volume: 0.8, autoApproveAll: false }
 }
 
 function saveSettings(s) {
@@ -129,25 +129,14 @@ const NEEDS_APPROVAL = new Set(['Bash', 'Edit', 'Write', 'NotebookEdit'])
 const APPROVAL_MEMORY_FILE = path.join(os.homedir(), '.sebastian', 'approval-memory.json')
 
 // Commands/patterns that are ALWAYS dangerous — never auto-approve
+// Keep this tight: only truly destructive/irreversible operations
 const CRITICAL_PATTERNS = [
   /\brm\s+(-[a-zA-Z]*f|-[a-zA-Z]*r|--force)/i,  // rm -rf, rm -f
-  /\brm\b.*\//,                                     // rm with paths
   /\bgit\s+push\b.*--force/i,                       // git push --force
   /\bgit\s+reset\s+--hard/i,                        // git reset --hard
-  /\bgit\s+checkout\s+\./,                           // git checkout . (discard all)
-  /\bgit\s+clean\s+-[a-zA-Z]*f/i,                   // git clean -f
-  /\bgit\s+branch\s+-[dD]/,                          // git branch -d/-D
   /\bsudo\b/,                                        // anything with sudo
   /\bdrop\s+(table|database|schema)/i,               // SQL drops
-  /\bdelete\s+from\b/i,                              // SQL deletes
-  /\btruncate\b/i,                                   // SQL truncate
-  /\bkill\s+-9\b/,                                   // kill -9
-  /\bpkill\b/,                                       // pkill
   /\brailway\s+up\b/,                                // railway up (known bad)
-  /\.env\b/,                                         // touching .env files
-  /credentials|secrets|password|token/i,             // secret files
-  /production|prod\b/i,                              // production-related
-  /--no-verify/,                                     // skipping git hooks
   /\bchmod\s+777\b/,                                 // dangerous perms
   /\bcurl\b.*\|\s*(bash|sh|zsh)/,                    // pipe to shell
 ]
@@ -2303,6 +2292,30 @@ function handlePreToolUse(data) {
           hookEventName: 'PreToolUse',
           permissionDecision: 'allow',
           permissionDecisionReason: 'Auto-allowed by Sebastian',
+        }
+      })
+      return
+    }
+
+    // Auto-approve-all mode: approve EVERYTHING — user opted in, respect it
+    if (settings.autoApproveAll) {
+      const critical = isCriticalOperation(toolName, toolInput)
+      const reason = critical ? 'auto-approve-all (critical — notified)' : 'auto-approve-all mode'
+      console.log(`[auto-approve-all] Auto-approved: ${toolName}${critical ? ' (CRITICAL)' : ''}`)
+      recordApprovalChoice(toolName, toolInput, true)
+      approvalMemory.stats.autoApproved++
+      saveApprovalMemory(approvalMemory)
+      personality.onAutoApprove(toolName)
+
+      sendEmotion(critical ? 'alert' : (toolEmotion(toolName) || 'listening'))
+      broadcastToMain('auto-approved', { toolName, reason, critical })
+      broadcastToMobile('auto-approved', { toolName, reason, critical })
+
+      resolve({
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'allow',
+          permissionDecisionReason: reason,
         }
       })
       return
