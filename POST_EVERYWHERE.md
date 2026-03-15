@@ -50,3 +50,10 @@ If not posted, compose at: https://x.com/compose/post
 - [x] Feature issues created (#1 Linux/Windows, #2 Plugin system)
 - [x] GitHub topics: electron, macos, developer-tools, claude, ai-assistant, desktop-companion, anthropic, claude-code, ai-butler
 - [x] Marketing copy for all 8 platforms written (MARKETING.md)
+- [x] Twitter/X tweet 1 posted: intro tweet with GitHub link card
+- [x] Twitter/X tweet 2 posted: landing page announcement with card preview
+
+## Notes
+- Reddit posting blocked: Shreddit editor rejects all programmatic input (Oculo issue #1)
+- Reddit account needs karma before posting in most subreddits
+- HN, Dev.to, Product Hunt need manual login (credentials not in Oculo vault)
